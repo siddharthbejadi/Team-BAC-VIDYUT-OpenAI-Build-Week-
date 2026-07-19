@@ -11,7 +11,7 @@ Deadline verified from Devpost: **Tuesday, July 21, 2026 at 5:00 PM Pacific Time
 - [x] Automated tests and sample data
 - [x] Installation and testing instructions
 - [x] Devpost cover image
-- [ ] Put the project in a Git repository and commit the final code
+- [x] Put the project in a local Git repository and commit the final code
 - [ ] Deploy a demo URL, or give judges the local testing path from `README.md`
 
 ## Required Devpost fields
