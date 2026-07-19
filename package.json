@@ -1,0 +1,16 @@
+{
+  "name": "bac-vidyut-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A virtual proving ground for autonomous machines.",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test",
+    "check": "node --check server.mjs && node --check public/js/app.js && node --check public/js/engine.js && node --check public/js/profiles.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}

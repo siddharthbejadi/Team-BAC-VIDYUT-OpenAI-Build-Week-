@@ -1,0 +1,13 @@
+{
+  "id": "warehouse-amr",
+  "name": "Warehouse AMR-12",
+  "family": "ground",
+  "format": "VIDYUT JSON adapter",
+  "accent": "#34d399",
+  "faults": ["camera_occlusion", "wheel_slip", "link_loss", "battery_sag"],
+  "capabilities": ["odometry", "lidar", "vision", "drive", "battery"],
+  "objective": "Reach the picking zone while maintaining a safe stop envelope.",
+  "passRules": ["Cross-track error < 12 m", "Perception > 25%", "No obstacle contact"],
+  "initial": { "x": 12, "y": 72, "battery": 100 },
+  "target": { "x": 84, "y": 32 }
+}
