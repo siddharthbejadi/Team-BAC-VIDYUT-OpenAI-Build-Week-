@@ -6,8 +6,9 @@
   "description": "Configure autonomous-machine geometry and electronics, compose failure tests, and collect deterministic SIL/HIL evidence.",
   "scripts": {
     "start": "node server.mjs",
+    "build": "node scripts/build.mjs",
     "test": "node --test",
-    "check": "node --check server.mjs && node --check public/js/app.js && node --check public/js/catalog.js && node --check public/js/engine.js && node --check public/js/hil.js && node --check public/js/manifest.js && node --check public/js/profiles.js"
+    "check": "node --check server.mjs && node --check scripts/build.mjs && node --check public/js/app.js && node --check public/js/catalog.js && node --check public/js/components.js && node --check public/js/engine.js && node --check public/js/hil.js && node --check public/js/manifest.js && node --check public/js/profiles.js"
   },
   "engines": {
     "node": ">=20"

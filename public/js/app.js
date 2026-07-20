@@ -1,4 +1,5 @@
 import { ENVIRONMENTS, FAULT_LIBRARY, TEST_LIBRARY, scenarioFromTests } from './catalog.js';
+import { findCuratedComponent } from './components.js';
 import { MACHINE_PROFILES, PRESET_SCENARIOS, cloneScenario, profileFromManifest } from './profiles.js';
 import { createStarterManifest, importMachineFiles, normalizeMachineManifest, validateMachineManifest } from './manifest.js';
 import { VidyutEngine } from './engine.js';
@@ -193,9 +194,14 @@ async function lookupComponent() {
   if (query.length < 3) { toast('Enter a component name or part number.'); return; }
   button.disabled = true; button.textContent = 'Researching...';
   try {
-    const response = await fetch('/api/ai/component', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query }) });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || 'Component lookup failed.');
+    const local = findCuratedComponent(query);
+    let payload;
+    if (local) payload = { component: local, source: 'curated-browser', citations: [{ url: local.sourceUrl, title: local.sourceTitle }], requiresConfirmation: true };
+    else {
+      const response = await fetch('/api/ai/component', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query }) });
+      payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Component lookup failed.');
+    }
     const component = payload.component;
     const baseId = component.id || `component-${state.manifest.components.length + 1}`;
     let id = baseId; let suffix = 2;
@@ -209,6 +215,25 @@ async function lookupComponent() {
     toast(`${component.name} added. Confirm ratings, pinout, and board-level differences.`);
   } catch (error) { toast(error.message); }
   finally { button.disabled = false; button.textContent = 'Find verified fields'; }
+}
+
+function planLocally(prompt) {
+  const text = prompt.toLowerCase();
+  const compatible = TEST_LIBRARY.filter((test) => test.appliesTo.includes(state.manifest.family) && test.fault !== 'multi_fault');
+  const tokens = {
+    gnss_drift: ['gnss','gps','navigation','position'], link_loss: ['link','radio','communication','signal'], wind_gust: ['wind','gust','weather','storm'],
+    imu_bias: ['imu','inertial','balance'], motor_loss: ['motor','actuator','propeller','thrust'], battery_sag: ['battery','power','voltage','cold'],
+    camera_occlusion: ['camera','vision','dark','occlusion'], obstacle_injection: ['obstacle','collision','hazard'], low_visibility: ['fog','dust','visibility','dark'],
+    precipitation: ['rain','snow','precipitation'], temperature_extreme: ['temperature','heat','cold'], pressure_altitude: ['altitude','pressure','mountain'],
+    emi: ['emi','interference','magnetic'], sensor_dropout: ['sensor','dropout'], actuator_stuck: ['stuck','jammed'], power_brownout: ['brownout','reset'],
+    latency_jitter: ['latency','jitter','delay'], packet_loss: ['packet','bus'], cpu_overload: ['cpu','compute','overload'], memory_pressure: ['memory'],
+    waypoint_reroute: ['waypoint','reroute','route'], geofence_breach: ['geofence','boundary'], wheel_slip: ['slip','mud','traction'], joint_torque_loss: ['joint','knee','torque']
+  };
+  const ranked = compatible.map((test) => ({ test, score: (tokens[test.fault] || []).reduce((score, token) => score + (text.includes(token) ? 3 : 0), 0) })).sort((a,b) => b.score - a.score);
+  const selected = ranked.some((item) => item.score > 0) ? ranked.filter((item) => item.score > 0).slice(0, 4).map((item) => item.test) : compatible.slice(0, 3);
+  state.selectedTestIds = selected.map((test) => test.id);
+  state.scenario = scenarioFromTests(profile(), selected, { environmentId: state.environment.id, name: selected.map((test) => test.name).join(' + ').slice(0, 64), intent: `Stress ${profile().name} against the mission risk: ${prompt.slice(0, 180)}` });
+  state.scenario.selectedTestIds = clone(state.selectedTestIds);
 }
 
 function addConnection() {
@@ -279,10 +304,16 @@ async function generateScenario() {
   dom.generateBtn.disabled = true;
   dom.generateBtn.textContent = 'Planning executable sequence...';
   try {
-    const response = await fetch('/api/ai/scenario', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt, profile: profile(), environment: state.environment }) });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || 'Scenario planning failed.');
-    state.scenario = payload.scenario;
+    let payload;
+    try {
+      const response = await fetch('/api/ai/scenario', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt, profile: profile(), environment: state.environment }) });
+      payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Scenario planning failed.');
+      state.scenario = payload.scenario;
+    } catch {
+      planLocally(prompt);
+      payload = { source: 'fallback', scenario: state.scenario };
+    }
     state.scenario.environmentId = state.environment.id;
     state.scenario.events = state.scenario.events.map((event) => ({ ...event, testId: TEST_LIBRARY.find((test) => test.fault === event.fault)?.id || event.testId }));
     state.selectedTestIds = [...new Set(state.scenario.events.map((event) => event.testId).filter(Boolean))];
