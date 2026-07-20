@@ -145,3 +145,5 @@ The exact implementation status and remaining external dependencies are tracked 
 ## License
 
 MIT. See [`LICENSE`](LICENSE).
+
+The Sites worker exposes the same constrained GPT routes. Add `OPENAI_API_KEY` as a secret Sites environment variable (and optionally `OPENAI_MODEL=gpt-5.6`) to enable them in the deployed app; without it, the browser uses the deterministic planner.

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { ENVIRONMENTS, TEST_LIBRARY, scenarioFromTests } from '../public/js/catalog.js';
 import { MACHINE_PROFILES, PRESET_SCENARIOS, profileFromManifest, validateMachineManifest as validateProfileManifest } from '../public/js/profiles.js';
 import { VidyutEngine, validateScenario } from '../public/js/engine.js';
@@ -278,4 +279,65 @@ test('legacy custom profiles normalize without pretending to be test-ready', () 
   assert.equal(custom.family, 'Ground');
   assert.equal(validateMachineManifest(normalized).ready, false);
   assert.equal(manifestFingerprint(normalized), manifestFingerprint(normalized));
+});
+
+
+async function loadSitesWorker() {
+  const source = await readFile(new URL('../sites/server-index.js', import.meta.url), 'utf8');
+  const assets = { '/index.html': { body: Buffer.from('VIDYUT').toString('base64'), type: 'text/html; charset=utf-8' } };
+  const executable = source.replace('__VIDYUT_ASSET_MAP__', JSON.stringify(assets));
+  return (await import(`data:text/javascript;base64,${Buffer.from(executable).toString('base64')}`)).default;
+}
+
+test('Sites worker keeps GPT credentials server-side and enforces structured engineering outputs', async () => {
+  const worker = await loadSitesWorker();
+  const status = await worker.fetch(new Request('https://vidyut.test/api/ai/status'), {});
+  assert.equal(status.status, 200);
+  assert.deepEqual(await status.json(), { configured: false, model: 'gpt-5.6', fallback: 'deterministic-browser-planner', runtime: 'sites-worker' });
+
+  const unavailable = await worker.fetch(new Request('https://vidyut.test/api/ai/scenario', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt: 'Mars crater GNSS loss' })
+  }), {});
+  assert.equal(unavailable.status, 503);
+
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, options) => {
+    const request = JSON.parse(options.body);
+    requests.push({ url, options, request });
+    const isComponent = Array.isArray(request.tools);
+    const output = isComponent
+      ? { id: 'servo-x', name: 'Servo X', partNumber: 'SX-1', manufacturer: 'Example', kind: 'actuator', input: { minVoltage: 4.8, maxVoltage: 6, currentA: 1.2 }, bus: null, address: null, pins: [{ id: 'V+', name: 'Power', mode: 'power' }], sourceUrl: 'https://example.com/datasheet', sourceTitle: 'Example data sheet', limitations: 'Engineer confirmation required.' }
+      : { name: 'Mars resilience', intent: 'Measure recovery after GNSS loss.', duration: 18, events: [{ fault: 'gnss_drift', start: 3, duration: 4, severity: .8 }], environmentPatch: { name: 'Mars crater', body: 'Mars', terrain: 'Crater rim', gravity: 3.721, airDensity: .02, temperature: -70, wind: 30, visibility: 60, latitude: null, longitude: null, elevation: null, rationale: 'Requested Mars conditions.' } };
+    return new Response(JSON.stringify({ output_text: JSON.stringify(output) }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+
+  try {
+    const environmentResponse = await worker.fetch(new Request('https://vidyut.test/api/ai/scenario', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ prompt: 'Mars crater flight with GNSS loss', profile: { name: 'VX-4', family: 'aerial', faults: ['gnss_drift'] }, environment: {} })
+    }), { OPENAI_API_KEY: 'server-secret', OPENAI_MODEL: 'gpt-5.6' });
+    const environmentPlan = await environmentResponse.json();
+    assert.equal(environmentResponse.status, 200);
+    assert.equal(environmentPlan.source, 'openai');
+    assert.equal(environmentPlan.environmentPatch.gravity, 3.721);
+    assert.equal(environmentPlan.environmentPatch.confirmed, false);
+    assert.equal(JSON.stringify(environmentPlan).includes('server-secret'), false);
+
+    const componentResponse = await worker.fetch(new Request('https://vidyut.test/api/ai/component', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query: 'Servo X SX-1' })
+    }), { OPENAI_API_KEY: 'server-secret' });
+    const component = await componentResponse.json();
+    assert.equal(componentResponse.status, 200);
+    assert.equal(component.requiresConfirmation, true);
+    assert.equal(component.source, 'openai-web-search');
+
+    assert.equal(requests[0].url, 'https://api.openai.com/v1/responses');
+    assert.equal(requests[0].request.reasoning.effort, 'low');
+    assert.equal(requests[0].request.text.format.strict, true);
+    assert.equal(requests[0].options.headers.authorization, 'Bearer server-secret');
+    assert.deepEqual(requests[1].request.tools, [{ type: 'web_search' }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
