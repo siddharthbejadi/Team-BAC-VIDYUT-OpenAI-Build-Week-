@@ -3,144 +3,153 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="BAC VIDYUT — a virtual proving ground for autonomous machines.">
-  <title>BAC VIDYUT — Virtual Proving Ground</title>
+  <meta name="description" content="BAC VIDYUT - configure, test, and collect evidence for autonomous machines before physical trials.">
+  <title>BAC VIDYUT - Autonomous Machine Test Platform</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-  <div class="app-shell">
-    <header class="topbar">
-      <a class="brand" href="#" aria-label="BAC VIDYUT home">
-        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span><b>BAC</b> <strong>VIDYUT</strong></span>
-      </a>
-      <div class="product-title">
-        <span>VIRTUAL PROVING GROUND</span>
-        <small>Find failures before the field does.</small>
+  <header class="topbar">
+    <a class="brand" href="#" aria-label="BAC VIDYUT home"><span class="brand-mark"><i></i><i></i><i></i></span><span><b>BAC</b><strong>VIDYUT</strong></span></a>
+    <div class="project-name"><span>PROJECT</span><b id="header-project-name">VX-4 Resilience Test</b></div>
+    <nav class="workflow-nav" aria-label="Project workflow">
+      <button class="active" data-page="machine"><span>1</span><b>Machine setup</b><small>Geometry + electronics</small></button>
+      <i></i>
+      <button data-page="scenario"><span>2</span><b>Scenario builder</b><small>Environment + tests</small></button>
+      <i></i>
+      <button data-page="run"><span>3</span><b>Run & evidence</b><small>SIL / HIL execution</small></button>
+    </nav>
+    <div class="top-actions"><span class="system-health"><i></i><span id="runtime-health">Runtime healthy</span></span><button class="button ghost compact" id="guided-demo-btn">Judge demo</button><button class="button primary compact" id="evidence-btn">Evidence</button></div>
+  </header>
+
+  <main>
+    <section class="page active" id="page-machine" data-page-panel="machine">
+      <div class="page-heading">
+        <div><span class="eyebrow">STEP 01 / MACHINE SETUP</span><h1>Give the model a body, electronics, and interfaces.</h1><p>Geometry and wiring are separate sources. VIDYUT combines them into one reviewable machine manifest before any test is allowed to run.</p></div>
+        <div class="heading-actions"><button class="button ghost" id="new-machine-btn">New custom machine</button><button class="button ghost" id="download-manifest-btn">Download manifest</button><button class="button primary" id="machine-next-btn">Validate & continue</button></div>
       </div>
-      <div class="top-actions">
-        <span class="system-health"><i></i> Runtime healthy</span>
-        <button class="button ghost compact" id="guided-demo-btn">▶ 60-second judge demo</button>
-        <button class="button primary compact" id="evidence-btn">Evidence report</button>
+
+      <div class="machine-layout">
+        <div class="machine-main">
+          <section class="card">
+            <div class="card-header"><div><span class="eyebrow">REFERENCE MACHINES</span><h2>Start from a working adapter</h2></div><small>Drone is the primary hackathon demonstration.</small></div>
+            <div id="preset-list" class="preset-grid"></div>
+          </section>
+
+          <section class="card import-section">
+            <div class="card-header"><div><span class="eyebrow">MACHINE PACKAGE</span><h2>Import engineering sources</h2></div><span class="format-chip">JSON / URDF / SDF / STEP / KiCad</span></div>
+            <label class="dropzone" id="machine-dropzone" for="machine-files">
+              <input id="machine-files" type="file" multiple accept=".json,.urdf,.sdf,.xml,.step,.stp,.net,.zip,.pdf" hidden>
+              <span class="drop-icon">+</span><b>Drop a CAD, robot description, netlist, or VIDYUT manifest</b><small>Upload package contents together. Reference PDFs are recorded; structured engineering values still require confirmation.</small>
+            </label>
+            <div id="import-notices" class="notice-list"></div>
+            <div id="source-files" class="source-files"></div>
+          </section>
+
+          <section class="card">
+            <div class="card-header"><div><span class="eyebrow">MECHANICAL MODEL</span><h2>Geometry and physical properties</h2></div><label class="confirm"><input id="physics-confirmed" type="checkbox"> Engineer confirmed</label></div>
+            <div class="form-grid">
+              <label><span>Machine name</span><input data-manifest="name" id="machine-name-input"></label>
+              <label><span>Family</span><select data-manifest="family" id="machine-family-input"><option value="aerial">Aerial / drone</option><option value="ground">Ground / rover</option><option value="legged">Legged / humanoid</option><option value="spacecraft">Spacecraft</option></select></label>
+              <label><span>Geometry format</span><input data-manifest="geometry.format" id="geometry-format-input" readonly></label>
+              <label><span>Units</span><select data-manifest="geometry.units" id="geometry-units-input"><option>m</option><option>mm</option><option>cm</option><option value="unknown">Unknown</option></select></label>
+              <label><span>Total mass (kg)</span><input data-manifest="physical.totalMassKg" id="mass-input" type="number" min="0" step="0.001"></label>
+              <label><span>Friction coefficient</span><input data-manifest="physical.frictionCoefficient" id="friction-input" type="number" min="0" step="0.01"></label>
+              <label><span>Drag coefficient</span><input data-manifest="physical.dragCoefficient" id="drag-input" type="number" min="0" step="0.01"></label>
+              <label><span>Centre of mass XYZ (m)</span><input data-manifest="physical.centerOfMass" id="com-input" placeholder="0, 0, 0"></label>
+            </div>
+            <div id="geometry-summary" class="summary-strip"></div>
+          </section>
+
+          <section class="card">
+            <div class="card-header"><div><span class="eyebrow">ELECTRONICS MANIFEST</span><h2>Components</h2></div><div class="component-actions"><input id="component-query" placeholder="Part number, e.g. PCA9685"><button class="button secondary compact" id="component-lookup-btn">Find verified fields</button><button class="button ghost compact" id="add-component-btn">+ Add manually</button></div></div>
+            <div class="table-wrap"><table><thead><tr><th>ID</th><th>Component</th><th>Role</th><th>Input V min</th><th>Input V max</th><th>Load A</th><th>Bus / address</th><th>Confirmed</th><th></th></tr></thead><tbody id="component-rows"></tbody></table></div>
+          </section>
+
+          <section class="card">
+            <div class="card-header"><div><span class="eyebrow">WIRING EDITOR</span><h2>Power and signal connections</h2></div><button class="button ghost compact" id="add-connection-btn">+ Add connection</button></div>
+            <div class="table-wrap"><table><thead><tr><th>Kind</th><th>From component.pin</th><th>To component.pin</th><th>Signal</th><th>Frequency Hz</th><th></th></tr></thead><tbody id="connection-rows"></tbody></table></div>
+            <p class="helper">For large assemblies, upload the JSON manifest or KiCad netlist, then use this editor only for corrections.</p>
+          </section>
+        </div>
+
+        <aside class="machine-aside">
+          <section class="card sticky-card">
+            <div class="readiness-head"><div><span class="eyebrow">PRE-RUN READINESS</span><h2 id="readiness-title">Checking...</h2></div><div class="readiness-ring" id="readiness-ring"><b id="readiness-score">0</b><small>%</small></div></div>
+            <div id="readiness-counts" class="readiness-counts"></div>
+            <div id="readiness-issues" class="issue-list"></div>
+            <button class="button secondary full" id="signal-check-btn">Run bench-safe signal check</button>
+            <p class="helper">Signal checks never enable physical actuator outputs. A connected controller receives logical sensor frames only.</p>
+          </section>
+        </aside>
       </div>
-    </header>
+    </section>
 
-    <aside class="left-panel panel-scroll">
-      <section class="panel-section">
-        <div class="eyebrow-row"><span>01</span><b>MACHINE UNDER TEST</b></div>
-        <div id="machine-list" class="machine-list"></div>
-        <label class="import-card" for="manifest-input">
-          <span class="plus">+</span>
-          <span><b>Import machine manifest</b><small>VIDYUT JSON · URDF mapping-ready</small></span>
-          <input id="manifest-input" type="file" accept="application/json,.json" hidden>
-        </label>
-      </section>
-
-      <section class="panel-section">
-        <div class="eyebrow-row"><span>02</span><b>EXECUTION MODE</b></div>
-        <div class="segmented" role="group" aria-label="Execution mode">
-          <button class="active" data-mode="SIL"><b>SIL</b><small>Virtual controller</small></button>
-          <button data-mode="HIL"><b>HIL</b><small>Real controller</small></button>
+    <section class="page" id="page-scenario" data-page-panel="scenario">
+      <div class="page-heading">
+        <div><span class="eyebrow">STEP 02 / SCENARIO BUILDER</span><h1>Choose a world, then compose the failures.</h1><p>Select any compatible tests. The deterministic executor owns timing and results; GPT-5.6 can draft a constrained plan.</p></div>
+        <div class="heading-actions"><button class="button ghost" data-go-page="machine">Back to machine</button><button class="button primary" id="scenario-next-btn">Continue to run</button></div>
+      </div>
+      <div class="scenario-layout">
+        <div class="scenario-main">
+          <section class="card">
+            <div class="card-header"><div><span class="eyebrow">ENVIRONMENT</span><h2>Default and space environments</h2></div><button class="button ghost compact" id="customize-environment-btn">Customize selected</button></div>
+            <div id="environment-grid" class="environment-grid"></div>
+            <div id="environment-editor" class="environment-editor"></div>
+          </section>
+          <section class="card">
+            <div class="card-header"><div><span class="eyebrow">DEFAULT TEST LIBRARY / 25</span><h2>Select one or many tests</h2></div><label class="search-box"><span>Search</span><input id="test-search" placeholder="GNSS, power, wind..."></label></div>
+            <div id="test-filters" class="filter-row"></div>
+            <div id="test-library" class="test-library"></div>
+          </section>
         </div>
-        <div class="connector-card" id="connector-card">
-          <div class="connector-icon" aria-hidden="true">⌁</div>
-          <div><b id="connector-title">Controller emulated</b><small id="connector-detail">Deterministic SIL adapter active</small></div>
-          <button id="connect-btn" class="icon-button" title="Connect controller">↗</button>
+        <aside class="scenario-aside">
+          <section class="card ai-card">
+            <div class="ai-heading"><span class="ai-spark">*</span><div><b>Scenario copilot</b><small>GPT-5.6 structured planning</small></div><span class="ai-mode" id="ai-mode">CHECKING</span></div>
+            <label><span>Describe mission risk</span><textarea id="ai-prompt" rows="5" placeholder="Fly through the Himalayan range, cross changing elevations, then lose GNSS near the final waypoint."></textarea></label>
+            <button class="button ai-button full" id="generate-btn">Generate executable plan</button>
+            <p class="helper" id="ai-helper">AI proposes schema-valid timing. Deterministic code executes and measures it.</p>
+          </section>
+          <section class="card sticky-card plan-card">
+            <div class="card-header"><div><span class="eyebrow">TEST PLAN</span><h2 id="plan-title">Validation plan</h2></div><span class="seed-chip" id="plan-duration">0 s</span></div>
+            <div id="plan-environment" class="plan-environment"></div>
+            <div id="plan-events" class="plan-events"></div>
+            <div class="form-grid two"><label><span>Deterministic seed</span><input id="seed-input" type="number" min="1" max="999999" value="42"></label><label><span>Run speed</span><select id="speed-select"><option value="1">1x</option><option value="1.75" selected>1.75x</option><option value="3">3x</option><option value="6">6x</option></select></label></div>
+          </section>
+        </aside>
+      </div>
+    </section>
+
+    <section class="page run-page" id="page-run" data-page-panel="run">
+      <div class="run-grid">
+        <aside class="run-left panel-scroll">
+          <section><div class="eyebrow-row"><span>01</span><b>RUN CONFIGURATION</b></div><div id="run-machine-card" class="run-summary-card"></div><div id="run-environment-card" class="run-summary-card"></div><button class="button ghost full" data-go-page="scenario">Edit scenario</button></section>
+          <section><div class="eyebrow-row"><span>02</span><b>EXECUTION MODE</b></div><div class="segmented" role="group"><button class="active" data-mode="SIL"><b>SIL</b><small>Virtual controller</small></button><button data-mode="HIL"><b>HIL</b><small>Real controller</small></button></div><div class="connector-card"><div><b id="connector-title">Controller emulated</b><small id="connector-detail">Deterministic SIL adapter active</small></div><button id="connect-btn" class="icon-button" title="Connect controller">Connect</button></div><div class="hil-actions"><button class="button danger compact" id="estop-btn">Emergency stop</button><button class="button ghost compact" id="clear-estop-btn">Clear</button></div><small class="bench-safe">BENCH SAFE: physical outputs are always disabled.</small></section>
+          <section><div class="eyebrow-row"><span>03</span><b>EXECUTE</b></div><div class="run-actions"><button class="button primary" id="run-btn">Run test plan</button><button class="button ghost square" id="reset-btn">Reset</button></div><button class="button secondary full" id="guided-run-btn">Run 60-second judge path</button></section>
+        </aside>
+
+        <div class="run-center">
+          <section class="scene-card card">
+            <div class="scene-toolbar"><div><div class="breadcrumb"><span>PROVING GROUND</span><i>/</i><b id="scene-machine-name">Machine</b></div><small id="scene-objective"></small></div><div class="run-state"><i id="run-state-dot"></i><span id="run-state-label">READY</span><b id="run-clock">00:00.0</b></div></div>
+            <div class="scene-wrap"><canvas id="scene-canvas" aria-label="Live virtual proving ground"></canvas><div class="scene-badge top-left"><span>TRUTH</span><b id="truth-position">X 0 / Y 0</b></div><div class="scene-badge top-right"><span>CONTROLLER</span><b id="controller-state">NOMINAL</b></div><div class="fault-banner" id="fault-banner" hidden><b>FAULT ACTIVE</b><span id="fault-banner-text"></span></div><div class="map-legend"><span><i class="truth-dot"></i>Truth</span><span><i class="estimate-dot"></i>Estimate</span><span><i class="target-dot"></i>Target</span></div></div>
+          </section>
+          <section class="metric-grid"><article><span>Safety margin</span><b id="metric-safety">100%</b><div class="meter"><i id="meter-safety"></i></div><small id="metric-safety-note">Inside envelope</small></article><article><span>Estimate error</span><b id="metric-error">0 m</b><div class="meter"><i id="meter-error"></i></div><small>Truth vs controller</small></article><article><span id="metric-context-label">Attitude</span><b id="metric-context">0 deg</b><div class="meter"><i id="meter-context"></i></div><small id="metric-context-note">Configured limit</small></article><article><span>Power reserve</span><b id="metric-battery">100%</b><div class="meter"><i id="meter-battery"></i></div><small>Live energy model</small></article></section>
+          <section class="telemetry-card card"><div class="card-header"><div><span class="eyebrow">TELEMETRY</span><h2>Deterministic evidence capture</h2></div><div class="chart-legend"><span><i class="teal"></i>Safety</span><span><i class="blue"></i>Battery</span><span><i class="amber"></i>Error</span></div></div><canvas id="telemetry-canvas"></canvas></section>
         </div>
-      </section>
 
-      <section class="panel-section scenario-controls">
-        <div class="eyebrow-row"><span>03</span><b>TEST SCENARIO</b></div>
-        <label class="field-label" for="scenario-select">Scenario preset</label>
-        <select id="scenario-select"></select>
-        <div class="field-pair">
-          <label><span>Seed</span><input id="seed-input" type="number" min="1" max="9999" value="42"></label>
-          <label><span>Speed</span><select id="speed-select"><option value="1">1×</option><option value="1.75" selected>1.75×</option><option value="3">3×</option></select></label>
-        </div>
-        <div class="scenario-summary" id="scenario-summary"></div>
-        <div class="run-actions">
-          <button class="button primary" id="run-btn">Run scenario</button>
-          <button class="button ghost square" id="reset-btn" title="Reset">↻</button>
-        </div>
-      </section>
-    </aside>
-
-    <main class="workspace">
-      <section class="scene-card">
-        <div class="scene-toolbar">
-          <div>
-            <div class="breadcrumb"><span>PROVING GROUND</span><i>/</i><b id="scene-machine-name">VX-4 Quadcopter</b></div>
-            <small id="scene-objective">Reach inspection waypoint and recover within the safety corridor.</small>
-          </div>
-          <div class="run-state"><i id="run-state-dot"></i><span id="run-state-label">READY</span><b id="run-clock">00:00.0</b></div>
-        </div>
-        <div class="scene-wrap">
-          <canvas id="scene-canvas" aria-label="Live proving ground simulation"></canvas>
-          <div class="scene-badge top-left"><span>TRUTH</span><b id="truth-position">X 12.0 · Y 74.0</b></div>
-          <div class="scene-badge top-right"><span>CONTROLLER</span><b id="controller-state">NOMINAL</b></div>
-          <div class="map-legend"><span><i class="truth-dot"></i>Ground truth</span><span><i class="estimate-dot"></i>Controller estimate</span><span><i class="target-dot"></i>Mission target</span></div>
-          <div class="fault-banner" id="fault-banner" hidden><b>FAULT ACTIVE</b><span id="fault-banner-text"></span></div>
-        </div>
-      </section>
-
-      <section class="metric-grid" aria-label="Live safety metrics">
-        <article><span>Safety margin</span><b id="metric-safety">100%</b><div class="meter"><i id="meter-safety"></i></div><small id="metric-safety-note">Inside envelope</small></article>
-        <article><span>Estimate error</span><b id="metric-error">0.0 m</b><div class="meter"><i id="meter-error"></i></div><small>Truth vs controller</small></article>
-        <article><span id="metric-context-label">Attitude</span><b id="metric-context">0.0°</b><div class="meter"><i id="meter-context"></i></div><small id="metric-context-note">Peak limit 28°</small></article>
-        <article><span>Power reserve</span><b id="metric-battery">100%</b><div class="meter"><i id="meter-battery"></i></div><small>Live energy model</small></article>
-      </section>
-
-      <section class="telemetry-card">
-        <div class="card-heading">
-          <div><b>Live telemetry</b><small>Deterministic replay · 10 Hz evidence capture</small></div>
-          <div class="chart-legend"><span><i class="teal"></i>Safety</span><span><i class="blue"></i>Battery</span><span><i class="amber"></i>Estimate error</span></div>
-        </div>
-        <canvas id="telemetry-canvas" aria-label="Live telemetry chart"></canvas>
-      </section>
-    </main>
-
-    <aside class="right-panel panel-scroll">
-      <section class="ai-card">
-        <div class="ai-heading">
-          <div class="ai-spark">✦</div>
-          <div><b>Failure Scenario Copilot</b><small>GPT-5.6 structured planning</small></div>
-          <span class="ai-mode" id="ai-mode">CHECKING</span>
-        </div>
-        <label for="ai-prompt">Describe a mission risk</label>
-        <textarea id="ai-prompt" rows="4" placeholder="Example: Inspect a bridge in gusty weather, then lose GNSS near the final waypoint."></textarea>
-        <button class="button ai-button" id="generate-btn"><span>✦</span> Generate stress test</button>
-        <p class="helper" id="ai-helper">AI proposes the test. VIDYUT’s deterministic engine executes and measures it.</p>
-      </section>
-
-      <section class="sequence-card">
-        <div class="card-heading compact-heading"><div><b>Failure sequence</b><small id="sequence-subtitle">3 injected events</small></div><span class="seed-chip" id="seed-chip">SEED 42</span></div>
-        <div id="event-list" class="event-list"></div>
-      </section>
-
-      <section class="trace-card">
-        <div class="card-heading compact-heading"><div><b>Runtime trace</b><small>What happened, and why</small></div><span class="live-chip">LIVE</span></div>
-        <div class="runtime-trace" id="runtime-trace"></div>
-      </section>
-
-      <section class="assertion-card">
-        <div class="eyebrow-row"><span>04</span><b>PASS ASSERTIONS</b></div>
-        <ul id="assertion-list"></ul>
-      </section>
-    </aside>
-  </div>
+        <aside class="run-right panel-scroll">
+          <section><div class="eyebrow-row"><span>04</span><b>FAILURE SEQUENCE</b></div><div id="event-list" class="event-list"></div></section>
+          <section><div class="eyebrow-row"><span>05</span><b>RUNTIME TRACE</b></div><div id="runtime-trace" class="runtime-trace"></div></section>
+          <section><div class="eyebrow-row"><span>06</span><b>CONTROLLER I/O</b></div><div id="controller-io" class="controller-io">No HIL frames yet.</div></section>
+        </aside>
+      </div>
+    </section>
+  </main>
 
   <dialog id="report-dialog">
-    <div class="dialog-header">
-      <div><span class="dialog-eyebrow">VIDYUT EVIDENCE · V1</span><h2>Engineering evidence report</h2></div>
-      <button id="close-report" class="icon-button" aria-label="Close report">×</button>
-    </div>
+    <div class="dialog-header"><div><span class="eyebrow">VIDYUT EVIDENCE / V2</span><h2>Engineering evidence report</h2></div><button id="close-report" class="icon-button">Close</button></div>
     <div id="report-content"></div>
-    <div class="dialog-actions">
-      <button class="button ghost" id="download-csv">Download telemetry CSV</button>
-      <button class="button primary" id="download-report">Download evidence JSON</button>
-    </div>
+    <div class="dialog-actions"><label class="button ghost" for="replay-input">Load replay<input id="replay-input" type="file" accept=".json,application/json" hidden></label><button class="button ghost" id="download-csv">Telemetry CSV</button><button class="button primary" id="download-report">Evidence JSON</button></div>
   </dialog>
-
   <div class="toast" id="toast" role="status"></div>
   <script type="module" src="/js/app.js"></script>
 </body>

@@ -3,9 +3,11 @@ import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { validateScenario } from './public/js/engine.js';
+import { TEST_LIBRARY } from './public/js/catalog.js';
 
 const root = fileURLToPath(new URL('./public/', import.meta.url));
 const port = Number(process.env.PORT) || 4173;
+const host = process.env.HOST || '0.0.0.0';
 const model = process.env.OPENAI_MODEL || 'gpt-5.6';
 
 const mime = {
@@ -35,7 +37,7 @@ async function readJson(request, limit = 128_000) {
 }
 
 function safeProfile(raw) {
-  const faults = Array.isArray(raw?.faults) ? raw.faults.filter((value) => typeof value === 'string').slice(0, 12) : [];
+  const faults = Array.isArray(raw?.faults) ? raw.faults.filter((value) => typeof value === 'string').slice(0, 32) : [];
   if (!raw?.id || !raw?.name || !raw?.family || faults.length === 0) throw new Error('A valid machine profile is required.');
   return {
     id: String(raw.id).slice(0, 80),
@@ -49,11 +51,12 @@ function safeProfile(raw) {
 
 function normalizeScenario(scenario, profile) {
   const duration = Math.max(8, Math.min(30, Number(scenario.duration) || 18));
-  const events = (scenario.events || []).slice(0, 4).map((event, index) => {
+  const events = (scenario.events || []).slice(0, 6).map((event, index) => {
     const start = Math.max(1, Math.min(duration - 2, Number(event.start) || 3 + index * 4));
     const eventDuration = Math.max(1, Math.min(duration - start, Number(event.duration) || 4));
     return {
       fault: profile.faults.includes(event.fault) ? event.fault : profile.faults[index % profile.faults.length],
+      testId: TEST_LIBRARY.find((test) => test.fault === event.fault)?.id || null,
       start: Number(start.toFixed(1)),
       duration: Number(eventDuration.toFixed(1)),
       severity: Number(Math.max(.1, Math.min(1, Number(event.severity) || .65)).toFixed(2))
@@ -64,7 +67,8 @@ function normalizeScenario(scenario, profile) {
     name: String(scenario.name || 'AI stress test').slice(0, 64),
     intent: String(scenario.intent || 'Validate autonomous response to a realistic sequence of failures.').slice(0, 280),
     duration,
-    events: events.length ? events : [{ fault: profile.faults[0], start: 3, duration: 5, severity: .7 }]
+    selectedTestIds: [...new Set(events.map((event) => event.testId).filter(Boolean))],
+    events: events.length ? events : [{ fault: profile.faults[0], testId: TEST_LIBRARY.find((test) => test.fault === profile.faults[0])?.id || null, start: 3, duration: 5, severity: .7 }]
   };
 }
 
@@ -102,7 +106,7 @@ function extractOutputText(payload) {
   throw new Error('The model returned no structured scenario.');
 }
 
-async function openAiScenario(prompt, profile) {
+async function openAiScenario(prompt, profile, environment = {}) {
   const schema = {
     type: 'object',
     additionalProperties: false,
@@ -135,10 +139,11 @@ async function openAiScenario(prompt, profile) {
       headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'content-type': 'application/json' },
       body: JSON.stringify({
         model,
+        reasoning: { effort: 'low' },
         input: [
           {
             role: 'system',
-            content: `You design safety validation scenarios for autonomous machines. Use only the permitted fault identifiers. Sequence faults realistically, keep every event inside the total duration, and make the result directly executable. Machine: ${JSON.stringify(profile)}`
+            content: `You design safety validation scenarios for autonomous machines. Use only the permitted fault identifiers. Sequence faults realistically, keep every event inside the total duration, and make the result directly executable. State measurable intent but never claim certification. Machine: ${JSON.stringify(profile)}. Environment: ${JSON.stringify(environment)}`
           },
           { role: 'user', content: prompt }
         ],
@@ -154,6 +159,56 @@ async function openAiScenario(prompt, profile) {
   }
 }
 
+const LOCAL_COMPONENTS = [
+  { tokens: ['pca9685'], component: { id: 'pca9685', name: 'PCA9685 16-channel PWM driver', partNumber: 'PCA9685', manufacturer: 'NXP', kind: 'actuator-controller', input: { minVoltage: 2.3, maxVoltage: 5.5, currentA: .02 }, bus: 'i2c', address: '0x40', pins: [{ id: 'VCC', name: 'VCC', mode: 'power' }, { id: 'GND', name: 'GND', mode: 'ground' }, { id: 'SDA', name: 'SDA', mode: 'i2c' }, { id: 'SCL', name: 'SCL', mode: 'i2c' }, { id: 'PWM0', name: 'PWM0', mode: 'pwm' }], sourceUrl: 'https://www.nxp.com/docs/en/data-sheet/PCA9685.pdf', sourceTitle: 'NXP PCA9685 data sheet' } },
+  { tokens: ['mpu6050', 'mpu-6050'], component: { id: 'mpu6050', name: 'MPU-6050 6-axis IMU', partNumber: 'MPU-6050', manufacturer: 'TDK InvenSense', kind: 'sensor', input: { minVoltage: 2.375, maxVoltage: 3.46, currentA: .004 }, bus: 'i2c', address: '0x68', pins: [{ id: 'VCC', name: 'VCC', mode: 'power' }, { id: 'GND', name: 'GND', mode: 'ground' }, { id: 'SDA', name: 'SDA', mode: 'i2c' }, { id: 'SCL', name: 'SCL', mode: 'i2c' }], sourceUrl: 'https://invensense.tdk.com/wp-content/uploads/2015/02/MPU-6000-Datasheet1.pdf', sourceTitle: 'TDK MPU-6000/6050 data sheet' } },
+  { tokens: ['stm32f4', 'stm32f407'], component: { id: 'stm32f407', name: 'STM32F407 microcontroller', partNumber: 'STM32F407', manufacturer: 'STMicroelectronics', kind: 'controller', input: { minVoltage: 1.8, maxVoltage: 3.6, currentA: .2 }, bus: null, address: null, pins: [{ id: 'VDD', name: 'VDD', mode: 'power' }, { id: 'VSS', name: 'VSS', mode: 'ground' }, { id: 'TX1', name: 'USART1_TX', mode: 'tx' }, { id: 'RX1', name: 'USART1_RX', mode: 'rx' }, { id: 'PWM1', name: 'TIM1_CH1', mode: 'pwm' }], sourceUrl: 'https://www.st.com/resource/en/datasheet/stm32f407vg.pdf', sourceTitle: 'STMicroelectronics STM32F407 data sheet' } },
+  { tokens: ['raspberry pi 5', 'rpi5'], component: { id: 'raspberry-pi-5', name: 'Raspberry Pi 5', partNumber: 'SC1112', manufacturer: 'Raspberry Pi', kind: 'controller', input: { minVoltage: 4.75, maxVoltage: 5.25, currentA: 5 }, bus: 'i2c', address: null, pins: [{ id: '5V', name: '5V', mode: 'power' }, { id: 'GND', name: 'GND', mode: 'ground' }, { id: 'SDA', name: 'GPIO2/SDA', mode: 'i2c' }, { id: 'SCL', name: 'GPIO3/SCL', mode: 'i2c' }, { id: 'TX1', name: 'GPIO14/TX', mode: 'tx' }, { id: 'RX1', name: 'GPIO15/RX', mode: 'rx' }], sourceUrl: 'https://www.raspberrypi.com/documentation/computers/raspberry-pi.html', sourceTitle: 'Raspberry Pi hardware documentation' } },
+  { tokens: ['jetson orin nano', 'orin nano'], component: { id: 'jetson-orin-nano', name: 'Jetson Orin Nano developer kit', partNumber: 'Jetson Orin Nano', manufacturer: 'NVIDIA', kind: 'controller', input: { minVoltage: 9, maxVoltage: 20, currentA: 2.5 }, bus: 'uart', address: null, pins: [{ id: 'VIN', name: 'DC input', mode: 'power' }, { id: 'GND', name: 'GND', mode: 'ground' }, { id: 'TX1', name: 'UART TX', mode: 'tx' }, { id: 'RX1', name: 'UART RX', mode: 'rx' }], sourceUrl: 'https://developer.nvidia.com/embedded/learn/jetson-orin-nano-devkit-user-guide/index.html', sourceTitle: 'NVIDIA Jetson Orin Nano developer kit guide' } }
+];
+
+function localComponent(query) {
+  const text = query.toLowerCase();
+  const match = LOCAL_COMPONENTS.find((entry) => entry.tokens.some((token) => text.includes(token)));
+  return match ? JSON.parse(JSON.stringify(match.component)) : null;
+}
+
+function extractCitations(payload) {
+  const citations = [];
+  for (const item of payload.output || []) for (const content of item.content || []) for (const annotation of content.annotations || []) if (annotation.type === 'url_citation') citations.push({ url: annotation.url, title: annotation.title });
+  return citations;
+}
+
+async function openAiComponent(query) {
+  const schema = {
+    type: 'object', additionalProperties: false,
+    properties: {
+      id: { type: 'string' }, name: { type: 'string' }, partNumber: { type: 'string' }, manufacturer: { type: 'string' },
+      kind: { type: 'string', enum: ['controller','power-source','regulator','sensor','actuator','actuator-controller','module'] },
+      input: { type: 'object', additionalProperties: false, properties: { minVoltage: { type: ['number','null'] }, maxVoltage: { type: ['number','null'] }, currentA: { type: ['number','null'] } }, required: ['minVoltage','maxVoltage','currentA'] },
+      bus: { type: ['string','null'] }, address: { type: ['string','null'] },
+      pins: { type: 'array', maxItems: 24, items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string' }, name: { type: 'string' }, mode: { type: 'string' } }, required: ['id','name','mode'] } },
+      sourceUrl: { type: 'string' }, sourceTitle: { type: 'string' }, limitations: { type: 'string' }
+    }, required: ['id','name','partNumber','manufacturer','kind','input','bus','address','pins','sourceUrl','sourceTitle','limitations']
+  };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 35_000);
+  try {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST', signal: controller.signal,
+      headers: { authorization: `Bearer ${process.env.OPENAI_API_KEY}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model, reasoning: { effort: 'low' }, tools: [{ type: 'web_search' }],
+        input: [{ role: 'system', content: 'Find the exact electronic component using manufacturer documentation where possible. Return conservative electrical fields only. Do not infer a rating when sources disagree; use null and explain it in limitations. This draft must always be confirmed by an engineer before hardware use.' }, { role: 'user', content: query }],
+        text: { format: { type: 'json_schema', name: 'vidyut_component_draft', strict: true, schema } }, max_output_tokens: 1400
+      })
+    });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error?.message || `OpenAI request failed (${response.status}).`);
+    return { component: JSON.parse(extractOutputText(payload)), citations: extractCitations(payload) };
+  } finally { clearTimeout(timeout); }
+}
+
 async function handleApi(request, response, url) {
   if (url.pathname === '/api/ai/status' && request.method === 'GET') {
     return json(response, 200, { configured: Boolean(process.env.OPENAI_API_KEY), model, fallback: 'deterministic-local-planner' });
@@ -167,7 +222,7 @@ async function handleApi(request, response, url) {
       let scenario;
       let source;
       if (process.env.OPENAI_API_KEY) {
-        scenario = await openAiScenario(prompt, profile);
+        scenario = await openAiScenario(prompt, profile, body.environment || {});
         source = 'openai';
       } else {
         scenario = fallbackScenario(prompt, profile);
@@ -180,7 +235,21 @@ async function handleApi(request, response, url) {
       return json(response, 500, { error: error.name === 'AbortError' ? 'GPT-5.6 timed out; retry or use demo mode.' : error.message });
     }
   }
-  if (url.pathname === '/health') return json(response, 200, { ok: true, service: 'bac-vidyut', modelConfigured: Boolean(process.env.OPENAI_API_KEY) });
+  if (url.pathname === '/api/ai/component' && request.method === 'POST') {
+    try {
+      const body = await readJson(request, 32_000);
+      const query = String(body.query || '').trim().slice(0, 300);
+      if (query.length < 3) return json(response, 400, { error: 'Enter a component name or part number.' });
+      const curated = localComponent(query);
+      if (curated) return json(response, 200, { component: curated, source: 'curated', citations: [{ url: curated.sourceUrl, title: curated.sourceTitle }], requiresConfirmation: true });
+      if (!process.env.OPENAI_API_KEY) return json(response, 404, { error: 'Component is not in the offline starter library. Configure OPENAI_API_KEY for manufacturer-document research, or add it manually.' });
+      const result = await openAiComponent(query);
+      return json(response, 200, { ...result, source: 'openai-web-search', model, requiresConfirmation: true });
+    } catch (error) {
+      return json(response, 500, { error: error.name === 'AbortError' ? 'Component research timed out.' : error.message });
+    }
+  }
+  if (url.pathname === '/health') return json(response, 200, { ok: true, service: 'bac-vidyut', schema: 'vidyut.machine.v2', evidence: 'vidyut.evidence.v2', modelConfigured: Boolean(process.env.OPENAI_API_KEY), capabilities: ['machine-import','electrical-validation','scenario-planning','sil','bidirectional-hil','evidence-replay'] });
   return false;
 }
 
@@ -215,7 +284,7 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(port, '127.0.0.1', () => {
-  console.log(`BAC VIDYUT is running at http://127.0.0.1:${port}`);
+server.listen(port, host, () => {
+  console.log(`BAC VIDYUT is running at http://${host === '0.0.0.0' ? '127.0.0.1' : host}:${port}`);
   console.log(process.env.OPENAI_API_KEY ? `GPT-5.6 scenario copilot enabled (${model})` : 'No OPENAI_API_KEY: deterministic demo planner enabled');
 });

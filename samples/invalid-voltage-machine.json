@@ -1,0 +1,15 @@
+{
+  "schema": "vidyut.machine.v2",
+  "version": 2,
+  "id": "invalid-voltage-demo",
+  "name": "Invalid Voltage Demo",
+  "family": "ground",
+  "geometry": { "format": "primitive", "units": "m", "links": [{ "id": "body", "massKg": 2, "collision": "box" }], "joints": [], "confirmed": true },
+  "physical": { "totalMassKg": 2, "centerOfMass": [0, 0, 0], "frictionCoefficient": 0.6, "dragCoefficient": 0.8, "confirmed": true },
+  "components": [
+    { "id": "battery", "name": "24 V battery", "kind": "power-source", "output": { "voltage": 24, "maxCurrentA": 1 }, "pins": [{ "id": "V+", "mode": "power" }] },
+    { "id": "controller", "name": "5 V controller", "kind": "controller", "input": { "minVoltage": 4.75, "maxVoltage": 5.25, "currentA": 2 }, "pins": [{ "id": "5V", "mode": "power" }] }
+  ],
+  "connections": [{ "id": "bad-wire", "kind": "power", "from": { "component": "battery", "pin": "V+" }, "to": { "component": "controller", "pin": "5V" } }],
+  "interfaces": [], "capabilities": [], "faults": [], "passRules": [], "assumptions": [], "confirmations": []
+}

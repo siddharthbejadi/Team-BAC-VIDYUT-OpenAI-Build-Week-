@@ -1,13 +1,41 @@
 {
+  "schema": "vidyut.machine.v2",
+  "version": 2,
   "id": "warehouse-amr",
   "name": "Warehouse AMR-12",
   "family": "ground",
-  "format": "VIDYUT JSON adapter",
-  "accent": "#34d399",
-  "faults": ["camera_occlusion", "wheel_slip", "link_loss", "battery_sag"],
+  "description": "A complete, readiness-valid import example.",
+  "sourceFiles": [],
+  "geometry": {
+    "format": "sdf",
+    "fileName": "warehouse-amr.sdf",
+    "units": "m",
+    "links": [{ "id": "chassis", "name": "Chassis", "massKg": 18.4, "centerOfMass": [0.08, 0, 0.22], "inertia": [1.2, 2.1, 2.5], "collision": "box" }],
+    "joints": [],
+    "confirmed": true
+  },
+  "physical": { "totalMassKg": 18.4, "centerOfMass": [0.08, 0, 0.22], "gravityEnabled": true, "frictionCoefficient": 0.72, "dragCoefficient": 0.8, "confirmed": true },
+  "components": [
+    { "id": "battery", "name": "12 V battery", "kind": "power-source", "output": { "voltage": 12, "maxCurrentA": 35 }, "pins": [{ "id": "VBAT+", "mode": "power" }, { "id": "GND", "mode": "ground" }] },
+    { "id": "regulator", "name": "5 V regulator", "kind": "regulator", "input": { "minVoltage": 9, "maxVoltage": 16, "currentA": 0.2 }, "output": { "voltage": 5, "maxCurrentA": 6 }, "pins": [{ "id": "VIN", "mode": "power" }, { "id": "5V", "mode": "power" }, { "id": "GND", "mode": "ground" }] },
+    { "id": "controller", "name": "STM32 rover controller", "kind": "controller", "input": { "minVoltage": 4.75, "maxVoltage": 5.25, "currentA": 0.8 }, "pins": [{ "id": "5V", "mode": "power" }, { "id": "GND", "mode": "ground" }, { "id": "PWM1", "mode": "pwm" }, { "id": "TX1", "mode": "tx" }, { "id": "RX1", "mode": "rx" }] },
+    { "id": "lidar", "name": "2D LiDAR", "kind": "sensor", "bus": "uart", "input": { "minVoltage": 4.75, "maxVoltage": 5.25, "currentA": 0.6 }, "pins": [{ "id": "5V", "mode": "power" }, { "id": "GND", "mode": "ground" }, { "id": "TX", "mode": "tx" }, { "id": "RX", "mode": "rx" }] },
+    { "id": "drive", "name": "Dual motor driver", "kind": "actuator", "input": { "minVoltage": 9, "maxVoltage": 16, "currentA": 12 }, "pins": [{ "id": "VBAT", "mode": "power" }, { "id": "GND", "mode": "ground" }, { "id": "PWM", "mode": "pwm", "minFrequencyHz": 50, "maxFrequencyHz": 20000 }] }
+  ],
+  "connections": [
+    { "id": "wire-1", "kind": "power", "from": { "component": "battery", "pin": "VBAT+" }, "to": { "component": "regulator", "pin": "VIN" } },
+    { "id": "wire-2", "kind": "power", "from": { "component": "regulator", "pin": "5V" }, "to": { "component": "controller", "pin": "5V" } },
+    { "id": "wire-3", "kind": "power", "from": { "component": "regulator", "pin": "5V" }, "to": { "component": "lidar", "pin": "5V" } },
+    { "id": "wire-4", "kind": "power", "from": { "component": "battery", "pin": "VBAT+" }, "to": { "component": "drive", "pin": "VBAT" } },
+    { "id": "wire-5", "kind": "signal", "signal": "pwm", "frequencyHz": 1000, "from": { "component": "controller", "pin": "PWM1" }, "to": { "component": "drive", "pin": "PWM" } },
+    { "id": "wire-6", "kind": "signal", "signal": "uart", "from": { "component": "controller", "pin": "TX1" }, "to": { "component": "lidar", "pin": "RX" } },
+    { "id": "wire-7", "kind": "signal", "signal": "uart", "from": { "component": "lidar", "pin": "TX" }, "to": { "component": "controller", "pin": "RX1" } }
+  ],
+  "interfaces": [{ "id": "amr-controller", "transport": "web-serial", "baudRate": 115200, "protocol": "vidyut.hil.v1", "benchSafe": true }],
   "capabilities": ["odometry", "lidar", "vision", "drive", "battery"],
+  "faults": ["camera_occlusion", "wheel_slip", "link_loss", "battery_sag", "obstacle_injection", "latency_jitter"],
   "objective": "Reach the picking zone while maintaining a safe stop envelope.",
   "passRules": ["Cross-track error < 12 m", "Perception > 25%", "No obstacle contact"],
-  "initial": { "x": 12, "y": 72, "battery": 100 },
-  "target": { "x": 84, "y": 32 }
+  "assumptions": [],
+  "confirmations": ["Mass and centre of mass", "Electrical ratings", "Pin mapping", "Bench-safe interface"]
 }

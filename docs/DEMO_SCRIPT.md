@@ -4,7 +4,7 @@
 
 “A drone, rover, or humanoid should not discover its worst controller bug during a costly physical trial. BAC VIDYUT is a virtual proving ground that turns a mission risk into a repeatable failure test and an engineering evidence bundle.”
 
-Show the full interface, then point to the three machine profiles.
+Show the three-step interface, then point to the four reference machine profiles and the 25-test library.
 
 ## 0:18–0:52 — Drone failure
 
@@ -16,9 +16,9 @@ Let the fault banner, estimate ghost, runtime trace, and chart become visible.
 
 ## 0:52–1:18 — One engine, different machines
 
-Click the rover and humanoid profiles briefly or use **60-second judge demo**.
+Click the rover, humanoid, and CubeSat profiles briefly or use **Judge demo**.
 
-“Universality is an adapter contract, not one fake physics model. The rover exposes vision and traction failures. The humanoid exposes IMU and joint-torque failures. Each has its own motion, safety policy, assertions, and visual response, but all produce the same evidence schema.”
+“Universality is an adapter contract, not one fake physics model. The rover exposes vision and traction failures, the humanoid exposes IMU and joint-torque failures, and the CubeSat exposes orbital safe mode. Each produces the same evidence schema.”
 
 ## 1:18–1:46 — GPT-5.6
 
@@ -36,9 +36,9 @@ Switch from SIL to HIL and show the controller connector.
 
 ## 2:10–2:32 — Evidence
 
-Open **Evidence report** and download JSON.
+Open **Evidence** and download JSON.
 
-“The output is not a screenshot. It is a versioned record of the machine, scenario, seed, assertions, findings, event log, and every telemetry sample—ready to compare across firmware versions.”
+“The output is not a screenshot or a single whole-machine verdict. It records each test case separately, plus the machine fingerprint, environment, scenario, seed, findings, event log, telemetry, and replay configuration.”
 
 ## 2:32–2:40 — Close
 

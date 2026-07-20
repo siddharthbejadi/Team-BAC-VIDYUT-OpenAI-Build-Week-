@@ -5,7 +5,9 @@ Deadline verified from Devpost: **Tuesday, July 21, 2026 at 5:00 PM Pacific Time
 ## Build
 
 - [x] Working, runnable project
-- [x] Three-machine guided demo
+- [x] Four reference machines and drone judge demo
+- [x] Three-stage workflow, 25-test library, and seven environments
+- [x] Machine import, electronics editor, and readiness checks
 - [x] Deterministic evidence export
 - [x] Optional GPT-5.6 integration and no-key testing path
 - [x] Automated tests and sample data

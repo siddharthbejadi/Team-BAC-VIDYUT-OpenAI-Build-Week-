@@ -24,11 +24,11 @@ That statement is stronger than “one simulator for everything.” It makes the
 
 | Demonstrated now | Production work still required |
 |---|---|
-| One shared runtime with aerial, ground, and legged profiles | Physics-grade backend adapters and validated machine models |
-| Nine executable failure types | Calibrated sensor/actuator fault libraries per platform |
+| One shared runtime with aerial, ground, legged, and spacecraft profiles | Physics-grade backend adapters and validated machine models |
+| 25 executable test templates | Calibrated sensor/actuator fault models per platform |
 | Deterministic replay and JSON/CSV evidence | Signed evidence, traceability, requirements tools, organization access controls |
-| Browser Web Serial HIL telemetry bridge | Electrical I/O, CAN/Ethernet, hard real-time synchronization and bench safety |
-| JSON machine manifest | URDF/SDF/USD/CAD ingest, calibration, and interface-mapping tools |
+| Bidirectional browser Web Serial HIL bridge with bench-safe clamps | Electrical I/O, CAN/Ethernet, hard real-time synchronization and certified bench safety |
+| JSON, URDF, SDF, STEP metadata, and KiCad netlist import | Production CAD meshing, complete referenced assets, calibration, and backend-specific conversion |
 | GPT-5.6 schema-valid scenario planning | Domain-reviewed prompt/eval suite and customer-approved scenario libraries |
 
 ## Why the AI belongs here

@@ -1,13 +1,13 @@
 {
   "name": "bac-vidyut-prototype",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "A virtual proving ground for autonomous machines.",
+  "description": "Configure autonomous-machine geometry and electronics, compose failure tests, and collect deterministic SIL/HIL evidence.",
   "scripts": {
     "start": "node server.mjs",
     "test": "node --test",
-    "check": "node --check server.mjs && node --check public/js/app.js && node --check public/js/engine.js && node --check public/js/profiles.js"
+    "check": "node --check server.mjs && node --check public/js/app.js && node --check public/js/catalog.js && node --check public/js/engine.js && node --check public/js/hil.js && node --check public/js/manifest.js && node --check public/js/profiles.js"
   },
   "engines": {
     "node": ">=20"

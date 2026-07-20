@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<export>
+  <components>
+    <comp ref="U1"><value>STM32F407</value><footprint>LQFP-100</footprint></comp>
+    <comp ref="U2"><value>PCA9685</value><footprint>TSSOP-28</footprint></comp>
+    <comp ref="J1"><value>SERVO_HEADER</value><footprint>PinHeader_1x03</footprint></comp>
+  </components>
+  <nets>
+    <net code="1" name="SDA"><node ref="U1" pin="43"/><node ref="U2" pin="27"/></net>
+    <net code="2" name="SCL"><node ref="U1" pin="44"/><node ref="U2" pin="28"/></net>
+    <net code="3" name="PWM0"><node ref="U2" pin="6"/><node ref="J1" pin="1"/></net>
+  </nets>
+</export>

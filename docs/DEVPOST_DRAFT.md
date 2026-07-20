@@ -18,7 +18,7 @@ Autonomous machines often meet their most expensive bugs during physical testing
 
 VIDYUT is a virtual proving ground for autonomous systems. An engineer selects or imports a machine profile, describes a mission risk, runs a sequence of virtual faults, watches ground truth diverge from what the controller believes, and exports the result as an evidence bundle.
 
-The prototype includes three executable machine families—quadcopter, rover, and humanoid—plus nine failure modes. It supports a fully virtual SIL controller and a browser Web Serial HIL bridge that can ingest newline-delimited telemetry from a real controller while the machine itself stays on the bench.
+The prototype includes four executable machine families—quadcopter, rover, humanoid, and CubeSat—plus a selectable library of 25 failure tests. It supports a fully virtual SIL controller and a bidirectional browser Web Serial HIL bridge: virtual sensors go to a real controller while normalized actuator commands return to the virtual machine and physical outputs stay disabled.
 
 ## How we built it
 
@@ -36,10 +36,13 @@ The hardest decision was refusing to fake universal physics. Supporting every dr
 
 ## Accomplishments
 
-- One-click guided demo across aerial, ground, and legged machines.
+- A complete machine-setup, scenario-builder, and evidence workflow.
+- Multi-source machine import plus electrical readiness validation.
+- One-click drone judge demo and four reference machine families.
+- A 25-test library and seven configurable environments.
 - Deterministic fault injection, recovery measurement, and evidence export.
 - Strict separation between AI-generated test intent and deterministic verdicts.
-- A real browser-to-controller telemetry path using Web Serial.
+- A real bidirectional browser-to-controller path using Web Serial.
 - Automated tests for every reference machine and repeatable runs.
 
 ## What we learned

@@ -1,3 +1,6 @@
+import { ENVIRONMENTS, TEST_LIBRARY } from './catalog.js';
+import { manifestFingerprint } from './manifest.js';
+
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const round = (value, digits = 2) => Number(value.toFixed(digits));
 
@@ -34,6 +37,11 @@ export class VidyutEngine {
     this.seed = Number(options.seed) || 42;
     this.rng = seededRandom(this.seed);
     this.mode = options.mode || "SIL";
+    this.environment = JSON.parse(JSON.stringify(options.environment || ENVIRONMENTS.find((item) => item.id === scenario.environmentId) || ENVIRONMENTS[0]));
+    this.manifest = options.manifest || profile.manifest || null;
+    this.readiness = options.readiness || null;
+    this.adapter = options.adapter || (this.mode === 'HIL' ? 'web-serial' : 'deterministic-sil');
+    this.lastActuatorCommand = null;
     this.reset();
   }
 
@@ -60,6 +68,9 @@ export class VidyutEngine {
       completed: false,
       safeStop: false,
       collision: false
+      ,latencyMs: 0
+      ,computeLoad: 28
+      ,packetDelivery: 100
     };
     this.telemetry = [];
     this.logs = [{ t: 0, level: "info", text: `${this.mode} runtime initialised with seed ${this.seed}` }];
@@ -102,7 +113,7 @@ export class VidyutEngine {
     });
   }
 
-  step(dt = 0.05, hardwareSample = null) {
+  step(dt = 0.05, hardwareSample = null, actuatorCommand = null) {
     if (this.state.completed) return this.snapshot();
     dt = clamp(Number(dt) || 0.05, 0.005, 0.25);
     this.state.t = round(this.state.t + dt, 4);
@@ -110,11 +121,14 @@ export class VidyutEngine {
     this.updateEventLog();
 
     if (hardwareSample && this.mode === "HIL") this.applyHardwareSample(hardwareSample);
+    if (actuatorCommand && this.mode === 'HIL') this.applyActuatorCommand(actuatorCommand);
     const family = this.profile.family.toLowerCase();
     if (family === "aerial") this.stepAerial(dt);
+    else if (family === 'spacecraft') this.stepSpacecraft(dt);
     else if (family === "legged") this.stepLegged(dt);
     else this.stepGround(dt);
 
+    this.applyUniversalFaults(dt);
     this.updateCommon(dt);
     this.captureTelemetry();
     if (this.state.t >= this.scenario.duration) this.finish();
@@ -128,6 +142,16 @@ export class VidyutEngine {
     if (Number.isFinite(sample.stability)) this.state.stability = clamp(sample.stability, 0, 100);
   }
 
+  applyActuatorCommand(command) {
+    this.lastActuatorCommand = JSON.parse(JSON.stringify(command));
+    const outputs = Array.isArray(command.outputs) ? command.outputs : [];
+    if (outputs.length) {
+      const spread = Math.max(...outputs) - Math.min(...outputs);
+      this.state.attitude = clamp(this.state.attitude + spread * 8, 0, 60);
+      this.state.controller = command.controllerState || 'HIL COMMAND';
+    }
+  }
+
   vectorToTarget(useObserved = true) {
     const sx = useObserved ? this.state.observedX : this.state.x;
     const sy = useObserved ? this.state.observedY : this.state.y;
@@ -138,21 +162,26 @@ export class VidyutEngine {
   }
 
   stepAerial(dt) {
-    const gnss = this.severity("gnss_drift");
-    const linkLoss = this.severity("link_loss");
-    const wind = this.severity("wind_gust");
-    const motor = this.severity("motor_loss");
-    const power = this.severity("battery_sag");
+    const gnss = Math.max(this.severity("gnss_drift"), this.severity('sensor_dropout') * .75, this.severity('emi') * .45);
+    const linkLoss = Math.max(this.severity("link_loss"), this.severity('packet_loss') * .65, this.severity('emi') * .35);
+    const wind = Math.max(this.severity("wind_gust"), this.severity('precipitation') * .35);
+    const motor = Math.max(this.severity("motor_loss"), this.severity('actuator_stuck') * .72);
+    const power = Math.max(this.severity("battery_sag"), this.severity('power_brownout') * .8, this.severity('temperature_extreme') * .35);
+    const gravityRatio = clamp(Number(this.environment.gravity || 9.80665) / 9.80665, .08, 2.5);
+    const densityRatio = clamp(Number(this.environment.airDensity ?? 1.225) / 1.225, 0, 1.6);
+    const aerodynamicAuthority = clamp(densityRatio / gravityRatio, .06, 1.25);
+    const ambientWind = clamp(Number(this.environment.wind || 0) / 35, 0, 1);
     const bias = gnss * Math.min(16, Math.max(0, this.state.t - 2) * 1.4);
     this.state.observedX = this.state.x + bias;
     this.state.observedY = this.state.y - bias * 0.64;
     this.state.link = clamp(100 - linkLoss * 100, 0, 100);
     const nav = this.vectorToTarget(true);
-    const authority = clamp(1 - motor * 0.66 - power * 0.22, 0.18, 1);
+    const authority = clamp((1 - motor * 0.66 - power * 0.22) * aerodynamicAuthority, 0.06, 1.1);
     let commandedSpeed = 5.4 * authority;
     if (linkLoss > 0.4) {
       commandedSpeed = 0.8;
       this.state.controller = "AUTONOMOUS HOLD";
+      this.state.safeStop = true;
       this.log("action", "Command link lost → autonomous hold engaged");
     } else if (gnss > 0.55) {
       commandedSpeed *= 0.62;
@@ -161,30 +190,37 @@ export class VidyutEngine {
     } else {
       this.state.controller = "TRACKING";
     }
-    const gustX = wind * 3.2;
-    const gustY = -wind * 5.8;
+    const gustX = (wind + ambientWind * .08) * 3.2;
+    const gustY = -(wind + ambientWind * .08) * 5.8;
     const response = clamp(2.2 * authority, 0.4, 2.2);
     this.state.vx += ((nav.nx * commandedSpeed + gustX) - this.state.vx) * response * dt;
     this.state.vy += ((nav.ny * commandedSpeed + gustY) - this.state.vy) * response * dt;
     this.state.x += this.state.vx * dt;
     this.state.y += this.state.vy * dt;
     this.state.attitude = clamp(Math.abs(gustY) * 3.1 + motor * 31 + Math.abs(this.state.vy) * 0.9, 0, 55);
-    this.state.altitude = clamp(32 - motor * 7 + Math.sin(this.state.t * 1.4) * wind * 2, 0, 50);
+    this.state.altitude = clamp(32 - motor * 7 - Math.max(0, .35 - aerodynamicAuthority) * this.state.t * 1.8 + Math.sin(this.state.t * 1.4) * wind * 2, 0, 50);
     this.state.stability = clamp(100 - this.state.attitude * 1.45 - gnss * 12, 0, 100);
+    if (aerodynamicAuthority < .18) {
+      this.state.controller = 'INSUFFICIENT LIFT';
+      this.log('fault', `Atmosphere/gravity combination provides only ${Math.round(aerodynamicAuthority * 100)}% aerodynamic authority`);
+    }
   }
 
   stepGround(dt) {
-    const vision = this.severity("camera_occlusion");
-    const slip = this.severity("wheel_slip");
-    const linkLoss = this.severity("link_loss");
-    const power = this.severity("battery_sag");
+    const vision = Math.max(this.severity("camera_occlusion"), this.severity('low_visibility'), this.severity('sensor_dropout') * .8, this.severity('precipitation') * .55);
+    const slip = Math.max(this.severity("wheel_slip"), this.severity('precipitation') * .58, this.severity('actuator_stuck') * .45);
+    const linkLoss = Math.max(this.severity("link_loss"), this.severity('packet_loss') * .7);
+    const power = Math.max(this.severity("battery_sag"), this.severity('power_brownout') * .8, this.severity('temperature_extreme') * .35);
     this.state.perception = clamp(100 - vision * 96, 0, 100);
     this.state.link = clamp(100 - linkLoss * 100, 0, 100);
     this.state.observedX = this.state.x + slip * 4.4;
     this.state.observedY = this.state.y - slip * 2.1;
     const nav = this.vectorToTarget(true);
+    const declaredFriction = Number(this.manifest?.physical?.frictionCoefficient ?? .65);
+    const gravityRatio = clamp(Number(this.environment.gravity || 9.80665) / 9.80665, .08, 2.5);
+    const tractionAuthority = clamp(declaredFriction / .65 * Math.sqrt(gravityRatio), .12, 1.25);
     const safeStop = vision > 0.72 || linkLoss > 0.7;
-    const speed = safeStop ? 0 : 4.5 * (1 - slip * 0.58) * (1 - power * 0.25);
+    const speed = safeStop ? 0 : 4.5 * tractionAuthority * (1 - slip * 0.58) * (1 - power * 0.25);
     if (safeStop) {
       this.state.controller = "SAFE STOP";
       this.state.safeStop = true;
@@ -206,17 +242,18 @@ export class VidyutEngine {
   }
 
   stepLegged(dt) {
-    const joint = this.severity("joint_torque_loss");
-    const imu = this.severity("imu_bias");
-    const vision = this.severity("camera_occlusion");
-    const power = this.severity("battery_sag");
+    const joint = Math.max(this.severity("joint_torque_loss"), this.severity('actuator_stuck') * .72);
+    const imu = Math.max(this.severity("imu_bias"), this.severity('sensor_dropout') * .6, this.severity('emi') * .45);
+    const vision = Math.max(this.severity("camera_occlusion"), this.severity('low_visibility'), this.severity('precipitation') * .45);
+    const power = Math.max(this.severity("battery_sag"), this.severity('power_brownout') * .8, this.severity('temperature_extreme') * .35);
     this.state.perception = clamp(100 - vision * 92, 0, 100);
-    const perturbation = joint * 46 + imu * 27 + Math.abs(Math.sin(this.state.t * 2.8)) * 5;
+    const gravityRatio = clamp(Number(this.environment.gravity || 9.80665) / 9.80665, .08, 2.5);
+    const perturbation = joint * 46 + imu * 27 + Math.abs(Math.sin(this.state.t * 2.8)) * 5 + Math.abs(gravityRatio - 1) * 9;
     this.state.stability = clamp(100 - perturbation - power * 12, 0, 100);
-    this.state.jointLoad = clamp(28 + joint * 78 + power * 18, 0, 120);
+    this.state.jointLoad = clamp((28 + joint * 78 + power * 18) * gravityRatio, 0, 120);
     const safeStop = this.state.stability < 38 || this.state.jointLoad > 91 || vision > 0.82;
     const nav = this.vectorToTarget(false);
-    const speed = safeStop ? 0 : 2.75 * (1 - power * 0.28) * (1 - joint * 0.48);
+    const speed = safeStop ? 0 : 2.75 * clamp(1 / Math.sqrt(gravityRatio), .55, 1.4) * (1 - power * 0.28) * (1 - joint * 0.48);
     if (safeStop) {
       this.state.controller = "BALANCE HOLD";
       this.state.safeStop = true;
@@ -237,9 +274,88 @@ export class VidyutEngine {
     this.state.observedY = this.state.y;
   }
 
+  stepSpacecraft(dt) {
+    const attitudeSensor = Math.max(this.severity('imu_bias'), this.severity('sensor_dropout') * .7, this.severity('emi') * .5);
+    const linkLoss = Math.max(this.severity('link_loss'), this.severity('packet_loss') * .7);
+    const wheelLoss = Math.max(this.severity('motor_loss'), this.severity('actuator_stuck') * .75);
+    const power = Math.max(this.severity('battery_sag'), this.severity('power_brownout') * .8, this.severity('temperature_extreme') * .35);
+    const pressure = this.severity('pressure_altitude');
+    const radiationNoise = Math.max(this.severity('emi'), this.severity('sensor_dropout'));
+    const nav = this.vectorToTarget(false);
+    const authority = clamp(1 - wheelLoss * .72 - power * .24, .08, 1);
+    const speed = 2.4 * authority;
+    this.state.vx += (nav.nx * speed - this.state.vx) * .8 * dt;
+    this.state.vy += (nav.ny * speed - this.state.vy) * .8 * dt;
+    this.state.x += this.state.vx * dt;
+    this.state.y += this.state.vy * dt;
+    const bias = attitudeSensor * Math.min(8, this.state.t * .45);
+    this.state.observedX = this.state.x + bias;
+    this.state.observedY = this.state.y - bias * .4;
+    this.state.link = clamp(100 - linkLoss * 100, 0, 100);
+    this.state.altitude = 120 + Math.sin(this.state.t * .35) * 3;
+    this.state.heading += (wheelLoss * 3.5 + pressure * .5) * dt;
+    this.state.attitude = clamp(wheelLoss * 24 + pressure * 9 + radiationNoise * 7 + Math.abs(Math.sin(this.state.t)) * 1.5, 0, 45);
+    this.state.stability = clamp(100 - this.state.attitude * 1.7 - radiationNoise * 20, 0, 100);
+    this.state.controller = attitudeSensor > .4 ? 'STAR TRACKER HOLD' : 'ATTITUDE TRACKING';
+    if (linkLoss > .6 || this.severity('power_brownout') > .5) {
+      this.state.controller = 'ORBITAL SAFE MODE';
+      this.state.safeStop = true;
+      this.log('action', 'Communications or power margin low -> orbital safe mode engaged');
+    }
+  }
+
+  applyUniversalFaults(dt) {
+    const lowVisibility = Math.max(this.severity('low_visibility'), this.severity('precipitation') * .55);
+    const emi = this.severity('emi');
+    const sensor = this.severity('sensor_dropout');
+    const latency = this.severity('latency_jitter');
+    const packets = this.severity('packet_loss');
+    const cpu = this.severity('cpu_overload');
+    const memory = this.severity('memory_pressure');
+    const obstacle = this.severity('obstacle_injection');
+    const stuck = this.severity('actuator_stuck');
+    const brownout = this.severity('power_brownout');
+    const geofence = this.severity('geofence_breach');
+    const pressure = this.severity('pressure_altitude');
+    this.state.perception = clamp(this.state.perception - lowVisibility * 42 - sensor * 24 - emi * 12, 0, 100);
+    this.state.link = clamp(this.state.link - packets * 58 - emi * 22, 0, 100);
+    this.state.latencyMs = round(8 + latency * 180 + cpu * 95 + memory * 45, 1);
+    this.state.computeLoad = round(clamp(28 + cpu * 76 + memory * 52, 0, 100), 1);
+    this.state.packetDelivery = round(clamp(100 - packets * 82 - emi * 18, 0, 100), 1);
+    this.state.stability = clamp(this.state.stability - latency * 13 - cpu * 9 - stuck * 18 - brownout * 22, 0, 100);
+    this.state.attitude = clamp(this.state.attitude + stuck * 9 + pressure * 5, 0, 60);
+    if (emi > 0) {
+      this.state.observedX += Math.sin(this.state.t * 8.3) * emi * 2.2;
+      this.state.observedY += Math.cos(this.state.t * 7.1) * emi * 1.8;
+    }
+    if (obstacle > .45) {
+      this.state.safeStop = true;
+      this.state.controller = 'OBSTACLE HOLD';
+      this.state.vx *= Math.max(0, 1 - dt * 5);
+      this.state.vy *= Math.max(0, 1 - dt * 5);
+      this.log('action', 'Unexpected obstacle detected -> collision-avoidance hold');
+      if (this.state.stability < 18 && obstacle > .85) this.state.collision = true;
+    }
+    if (brownout > .55) {
+      this.state.controller = 'BROWNOUT RECOVERY';
+      this.log('action', 'Controller supply below margin -> reset-safe state requested');
+    }
+    if (geofence > .45) {
+      this.state.controller = 'GEOFENCE HOLD';
+      this.state.safeStop = true;
+      this.log('action', 'Geofence boundary approached -> route held');
+    }
+    if (this.severity('waypoint_reroute') > .25) {
+      this.state.controller = 'ROUTE REPLAN';
+      this.state.observedY += Math.sin(this.state.t) * 1.2;
+      this.log('action', 'Mission waypoint changed -> route replanned');
+    }
+  }
+
   updateCommon(dt) {
-    const power = this.severity("battery_sag");
-    const drain = (0.18 + Math.hypot(this.state.vx, this.state.vy) * 0.025 + power * 1.25) * dt;
+    const power = Math.max(this.severity("battery_sag"), this.severity('power_brownout'), this.severity('temperature_extreme') * .5);
+    const environmentLoad = Math.abs(Number(this.environment.temperature) - 20) / 100 + Number(this.environment.wind || 0) / 250;
+    const drain = (0.18 + Math.hypot(this.state.vx, this.state.vy) * 0.025 + power * 1.25 + environmentLoad) * dt;
     this.state.battery = clamp(this.state.battery - drain, 0, 100);
     const truth = this.vectorToTarget(false);
     const estimateError = Math.hypot(this.state.observedX - this.state.x, this.state.observedY - this.state.y);
@@ -270,6 +386,9 @@ export class VidyutEngine {
       attitude: round(this.state.attitude),
       jointLoad: round(this.state.jointLoad),
       controller: this.state.controller,
+      latencyMs: this.state.latencyMs,
+      computeLoad: this.state.computeLoad,
+      packetDelivery: this.state.packetDelivery,
       faults: this.activeFaults().map((event) => event.fault)
     });
     if (this.telemetry.length > 600) this.telemetry.shift();
@@ -277,33 +396,57 @@ export class VidyutEngine {
 
   finish() {
     const distance = Math.hypot(this.profile.target.x - this.state.x, this.profile.target.y - this.state.y);
-    const family = this.profile.family.toLowerCase();
-    let passed;
-    if (family === "aerial") passed = distance < 30 && this.state.attitude < 29 && this.state.battery > 20;
-    else if (family === "legged") passed = this.minSafety > 16 && this.state.jointLoad < 112 && (distance < 45 || this.state.safeStop);
-    else passed = this.minSafety > 14 && !this.state.collision && (distance < 35 || this.state.safeStop);
     this.state.completed = true;
-    this.state.phase = passed ? "PASSED" : "REVIEW";
-    this.result = this.buildReport(passed);
-    this.log(passed ? "success" : "fault", passed ? "Test passed — evidence bundle sealed" : "Review required — safety assertion exceeded");
+    this.state.phase = "COMPLETE";
+    const failed = this.evaluateTestCases().filter((test) => test.status === 'FAIL').length;
+    this.log(failed ? 'fault' : 'success', failed ? `${failed} test case(s) need engineering review; evidence bundle sealed` : 'All executed test cases met their configured assertions; evidence bundle sealed');
+    this.result = this.buildReport();
   }
 
-  buildReport(passed = this.state.phase === "PASSED") {
+  evaluateTestCases() {
+    const selected = this.scenario.selectedTestIds?.length ? this.scenario.selectedTestIds : [...new Set(this.scenario.events.map((event) => event.testId).filter(Boolean))];
+    return selected.map((testId) => {
+      const definition = TEST_LIBRARY.find((test) => test.id === testId);
+      if (!definition) return { id: testId, name: testId, status: 'NOT_EVALUATED', assertion: 'No test definition found', evidence: 'Scenario referenced an unknown test ID.' };
+      const events = this.scenario.events.filter((event) => event.testId === testId || event.fault === definition.fault);
+      if (!this.state.completed) return { id: testId, name: definition.name, category: definition.category, status: 'NOT_RUN', assertion: definition.assertion, evidence: 'The configured run has not completed.' };
+      if (!events.length) return { id: testId, name: definition.name, status: 'NOT_RUN', assertion: definition.assertion, evidence: 'No executable event was scheduled for this machine family.' };
+      let passed = this.minSafety > 12 && !this.state.collision;
+      if (definition.fault === 'gnss_drift') passed = this.maxError < 22;
+      if (definition.fault === 'wind_gust' || definition.fault === 'pressure_altitude') passed = this.state.attitude < 38;
+      if (definition.fault === 'camera_occlusion' || definition.fault === 'low_visibility') passed = this.state.safeStop || this.state.perception > 18;
+      if (definition.fault === 'link_loss' || definition.fault === 'obstacle_injection' || definition.fault === 'geofence_breach') passed = this.state.safeStop || this.logs.some((entry) => entry.level === 'action' && /hold|safe mode|controlled stop/i.test(entry.text));
+      if (definition.fault === 'battery_sag' || definition.fault === 'power_brownout' || definition.fault === 'temperature_extreme') passed = this.state.battery > 12;
+      if (definition.fault === 'latency_jitter') passed = this.state.latencyMs < 190;
+      if (definition.fault === 'packet_loss') passed = this.state.packetDelivery > 12;
+      if (definition.fault === 'cpu_overload' || definition.fault === 'memory_pressure') passed = this.state.computeLoad < 99;
+      return { id: testId, name: definition.name, category: definition.category, status: passed ? 'PASS' : 'FAIL', assertion: definition.assertion, evidence: `Minimum safety ${Math.max(0, this.minSafety).toFixed(1)}%; peak estimate error ${this.maxError.toFixed(1)} m; final battery ${this.state.battery.toFixed(1)}%.`, eventCount: events.length };
+    });
+  }
+
+  buildReport() {
     const distance = Math.hypot(this.profile.target.x - this.state.x, this.profile.target.y - this.state.y);
     const findings = [];
     if (this.maxError > 8) findings.push({ severity: "high", title: "Navigation estimate diverged", evidence: `Peak truth-to-estimate error ${this.maxError.toFixed(1)} m` });
     if (this.minSafety < 45) findings.push({ severity: this.minSafety < 20 ? "critical" : "medium", title: "Safety margin compressed", evidence: `Minimum calculated margin ${Math.max(0, this.minSafety).toFixed(0)}%` });
     if (this.state.safeStop) findings.push({ severity: "info", title: "Autonomous fallback verified", evidence: `Controller entered ${this.state.controller}` });
     if (findings.length === 0) findings.push({ severity: "info", title: "No safety assertion exceeded", evidence: "All monitored signals remained inside configured limits" });
+    const testCases = this.evaluateTestCases();
+    const failedCount = testCases.filter((test) => test.status === 'FAIL').length;
     return {
-      schema: "vidyut.evidence.v1",
+      schema: "vidyut.evidence.v2",
       generatedAt: new Date().toISOString(),
       runId: `VYT-${this.profile.id.toUpperCase()}-${this.seed}-${String(Date.now()).slice(-5)}`,
       machine: { id: this.profile.id, name: this.profile.name, family: this.profile.family, adapter: this.profile.format },
       scenario: this.scenario,
       mode: this.mode,
+      adapter: this.adapter,
+      environment: this.environment,
+      machineManifestFingerprint: this.manifest ? manifestFingerprint(this.manifest) : null,
+      readiness: this.readiness,
       deterministicSeed: this.seed,
-      verdict: passed ? "PASS" : "REVIEW",
+      overallAssessment: !this.state.completed ? 'NOT_RUN' : failedCount ? 'COMPLETE_WITH_FINDINGS' : 'COMPLETE',
+      note: 'VIDYUT reports each configured test case individually; this is not a certification or whole-machine safety verdict.',
       metrics: {
         finalDistance: round(distance, 1),
         peakEstimateError: round(this.maxError, 1),
@@ -312,9 +455,11 @@ export class VidyutEngine {
         finalBattery: round(this.state.battery, 1)
       },
       assertions: this.profile.passRules,
+      testCases,
       findings,
       eventLog: this.logs,
-      telemetry: this.telemetry
+      telemetry: this.telemetry,
+      replay: { profileId: this.profile.id, scenario: this.scenario, environment: this.environment, seed: this.seed, mode: this.mode }
     };
   }
 
