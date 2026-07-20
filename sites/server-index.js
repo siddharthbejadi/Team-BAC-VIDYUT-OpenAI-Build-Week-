@@ -1,4 +1,5 @@
 const assets = __VIDYUT_ASSET_MAP__;
+const assetKeys = Object.keys(assets);
 const jsonHeaders = { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' };
 
 function json(status, body) {
@@ -15,7 +16,7 @@ function decode(base64) {
 export default {
   async fetch(request) {
     const url = new URL(request.url);
-    if (url.pathname === '/health') return json(200, { ok: true, service: 'bac-vidyut-sites', schema: 'vidyut.machine.v2', evidence: 'vidyut.evidence.v2', aiMode: 'browser-fallback' });
+    if (url.pathname === '/health') return json(200, { ok: true, service: 'bac-vidyut-sites', schema: 'vidyut.machine.v2', evidence: 'vidyut.evidence.v2', aiMode: 'browser-fallback', assetCount: assetKeys.length, hasIndex: assetKeys.includes('/index.html') });
     if (url.pathname === '/api/ai/status') return json(200, { configured: false, fallback: 'deterministic-browser-planner' });
     if (url.pathname.startsWith('/api/ai/')) return json(503, { error: 'This static deployment uses the deterministic browser fallback. Run the Node service with OPENAI_API_KEY for live GPT-5.6 planning and web research.' });
     const requested = url.pathname === '/' ? '/index.html' : url.pathname;
