@@ -19,6 +19,7 @@ const state = {
   validation: null,
   environment: clone(ENVIRONMENTS[0]),
   selectedTestIds: clone(PRESET_SCENARIOS.drone[0].selectedTestIds),
+  customTests: [],
   scenario: cloneScenario(PRESET_SCENARIOS.drone[0]),
   testFilter: 'All',
   testSearch: '',
@@ -38,9 +39,9 @@ const state = {
 const dom = {
   projectName: $('#header-project-name'), runtimeHealth: $('#runtime-health'), presetList: $('#preset-list'), machineFiles: $('#machine-files'), dropzone: $('#machine-dropzone'), importNotices: $('#import-notices'), sourceFiles: $('#source-files'),
   physicsConfirmed: $('#physics-confirmed'), componentRows: $('#component-rows'), connectionRows: $('#connection-rows'), geometrySummary: $('#geometry-summary'), readinessTitle: $('#readiness-title'), readinessRing: $('#readiness-ring'), readinessScore: $('#readiness-score'), readinessCounts: $('#readiness-counts'), readinessIssues: $('#readiness-issues'),
-  environmentGrid: $('#environment-grid'), environmentEditor: $('#environment-editor'), testFilters: $('#test-filters'), testSearch: $('#test-search'), testLibrary: $('#test-library'), planTitle: $('#plan-title'), planDuration: $('#plan-duration'), planEnvironment: $('#plan-environment'), planEvents: $('#plan-events'), seedInput: $('#seed-input'), speedSelect: $('#speed-select'),
+  environmentGrid: $('#environment-grid'), environmentEditor: $('#environment-editor'), testFilters: $('#test-filters'), testSearch: $('#test-search'), testLibrary: $('#test-library'), customTestEditor: $('#custom-test-editor'), customTestName: $('#custom-test-name'), customTestFault: $('#custom-test-fault'), customTestSeverity: $('#custom-test-severity'), customTestDuration: $('#custom-test-duration'), customTestAssertion: $('#custom-test-assertion'), planTitle: $('#plan-title'), planDuration: $('#plan-duration'), planEnvironment: $('#plan-environment'), planEvents: $('#plan-events'), seedInput: $('#seed-input'), speedSelect: $('#speed-select'),
   aiPrompt: $('#ai-prompt'), aiMode: $('#ai-mode'), aiHelper: $('#ai-helper'), generateBtn: $('#generate-btn'),
-  runMachineCard: $('#run-machine-card'), runEnvironmentCard: $('#run-environment-card'), connectorTitle: $('#connector-title'), connectorDetail: $('#connector-detail'), connectBtn: $('#connect-btn'), controllerIo: $('#controller-io'), runBtn: $('#run-btn'), resetBtn: $('#reset-btn'),
+  runMachineCard: $('#run-machine-card'), runEnvironmentCard: $('#run-environment-card'), connectorTitle: $('#connector-title'), connectorDetail: $('#connector-detail'), connectBtn: $('#connect-btn'), hilSafetyConfirm: $('#hil-safety-confirm'), controllerIo: $('#controller-io'), runBtn: $('#run-btn'), resetBtn: $('#reset-btn'),
   sceneCanvas: $('#scene-canvas'), telemetryCanvas: $('#telemetry-canvas'), sceneMachineName: $('#scene-machine-name'), sceneObjective: $('#scene-objective'), runStateDot: $('#run-state-dot'), runStateLabel: $('#run-state-label'), runClock: $('#run-clock'), truthPosition: $('#truth-position'), controllerState: $('#controller-state'), faultBanner: $('#fault-banner'), faultBannerText: $('#fault-banner-text'), metricSafety: $('#metric-safety'), metricError: $('#metric-error'), metricContextLabel: $('#metric-context-label'), metricContext: $('#metric-context'), metricContextNote: $('#metric-context-note'), metricBattery: $('#metric-battery'), meterSafety: $('#meter-safety'), meterError: $('#meter-error'), meterContext: $('#meter-context'), meterBattery: $('#meter-battery'), metricSafetyNote: $('#metric-safety-note'), eventList: $('#event-list'), runtimeTrace: $('#runtime-trace'),
   evidenceBtn: $('#evidence-btn'), guidedDemoBtn: $('#guided-demo-btn'), guidedRunBtn: $('#guided-run-btn'), reportDialog: $('#report-dialog'), reportContent: $('#report-content'), toast: $('#toast'), replayInput: $('#replay-input')
 };
@@ -95,6 +96,7 @@ function selectPreset(id) {
   state.profiles[id] = clone(MACHINE_PROFILES[id]);
   state.manifest = clone(MACHINE_PROFILES[id].manifest);
   state.scenario = cloneScenario(PRESET_SCENARIOS[id][0]);
+  state.customTests = [];
   state.selectedTestIds = clone(state.scenario.selectedTestIds || []);
   state.environment = clone(ENVIRONMENTS.find((item) => item.id === state.scenario.environmentId) || ENVIRONMENTS[0]);
   syncProfile();
@@ -106,6 +108,7 @@ function selectPreset(id) {
 
 function newMachine() {
   state.manifest = createStarterManifest({ id: `custom-${Date.now().toString().slice(-6)}`, name: 'New custom machine', family: 'aerial', geometry: { format: 'unassigned', fileName: null, links: [], joints: [], confirmed: false }, physical: { totalMassKg: null, confirmed: false }, components: [], connections: [], capabilities: [], faults: [] });
+  state.customTests = [];
   syncProfile();
   state.selectedTestIds = ['gnss-loss', 'command-link-loss'];
   rebuildScenario();
@@ -236,6 +239,29 @@ function planLocally(prompt) {
   state.scenario.selectedTestIds = clone(state.selectedTestIds);
 }
 
+function localEnvironmentProposal(prompt) {
+  const text = prompt.toLowerCase();
+  const tokens = [
+    [['mars', 'martian'], 'mars'], [['moon', 'lunar'], 'lunar'], [['himalaya', 'mountain', 'ridge'], 'himalayan'],
+    [['desert', 'dune'], 'desert'], [['arctic', 'ice', 'polar'], 'arctic'], [['rainforest', 'jungle'], 'rainforest'], [['urban', 'city'], 'urban-canyon']
+  ];
+  const selectedId = tokens.find(([words]) => words.some((word) => text.includes(word)))?.[1];
+  const proposal = clone(ENVIRONMENTS.find((item) => item.id === selectedId) || state.environment);
+  const patterns = { gravity: /gravity\s*(?:=|of|at)?\s*(-?\d+(?:\.\d+)?)/i, airDensity: /air\s*density\s*(?:=|of|at)?\s*(-?\d+(?:\.\d+)?)/i, temperature: /temperature\s*(?:=|of|at)?\s*(-?\d+(?:\.\d+)?)/i, wind: /wind(?:\s*speed)?\s*(?:=|of|at)?\s*(\d+(?:\.\d+)?)/i, visibility: /visibility\s*(?:=|of|at)?\s*(\d+(?:\.\d+)?)/i, elevation: /(?:elevation|altitude)\s*(?:=|of|at)?\s*(-?\d+(?:\.\d+)?)/i };
+  for (const [key, pattern] of Object.entries(patterns)) { const match = prompt.match(pattern); if (match) proposal[key] = Number(match[1]); }
+  return { ...proposal, id: 'custom-ai', name: `AI proposal: ${proposal.name}`, version: 'proposal-v1', confirmed: false, provenance: 'Transparent local prompt parser; engineer confirmation required', rationale: 'Environment selected from a curated template and bounded numeric values extracted from the mission prompt.' };
+}
+
+function applyEnvironmentProposal(patch) {
+  if (!patch) return;
+  const bounds = { gravity: [0, 30], airDensity: [0, 2.5], temperature: [-200, 100], wind: [0, 100], visibility: [0, 100], latitude: [-90, 90], longitude: [-180, 180], elevation: [-12000, 100000] };
+  const next = { ...state.environment };
+  for (const key of ['name', 'body', 'terrain', 'rationale', 'provenance', 'version']) if (patch[key] != null) next[key] = String(patch[key]);
+  for (const [key, [min, max]] of Object.entries(bounds)) if (patch[key] != null && Number.isFinite(Number(patch[key]))) next[key] = clamp(Number(patch[key]), min, max);
+  state.environment = { ...next, id: 'custom-ai', confirmed: false, provenance: patch.provenance || 'GPT-5.6 environment proposal; engineer confirmation required' };
+  state.scenario.environmentId = state.environment.id;
+}
+
 function addConnection() {
   const first = state.manifest.components[0]?.id || '';
   const second = state.manifest.components[1]?.id || first;
@@ -245,13 +271,14 @@ function addConnection() {
 
 function availableTests() {
   const family = state.manifest.family;
-  return TEST_LIBRARY.map((test) => ({ ...test, compatible: test.appliesTo.includes(family) }));
+  return [...TEST_LIBRARY, ...state.customTests].map((test) => ({ ...test, compatible: test.appliesTo.includes(family) }));
 }
 
 function rebuildScenario(options = {}) {
-  const selected = TEST_LIBRARY.filter((test) => state.selectedTestIds.includes(test.id) && test.appliesTo.includes(state.manifest.family));
+  const selected = availableTests().filter((test) => state.selectedTestIds.includes(test.id) && test.appliesTo.includes(state.manifest.family));
   state.selectedTestIds = selected.map((test) => test.id);
   state.scenario = scenarioFromTests(profile(), selected, { environmentId: state.environment.id, name: options.name, intent: options.intent });
+  state.scenario.testDefinitions = clone(state.customTests.filter((test) => state.selectedTestIds.includes(test.id)));
 }
 
 function renderScenario() {
@@ -262,21 +289,51 @@ function renderScenario() {
 
 function renderEnvironments() {
   dom.environmentGrid.innerHTML = ENVIRONMENTS.map((environment) => `<button class="environment-card ${environment.id === state.environment.id ? 'active' : ''}" data-environment="${environment.id}" style="--environment-color:${environment.color}"><span>${escapeHtml(environment.body.toUpperCase())}</span><b>${escapeHtml(environment.name)}</b><small>${escapeHtml(environment.terrain)}<br>${environment.gravity} m/s2 / ${environment.temperature} C</small></button>`).join('');
-  dom.environmentEditor.innerHTML = ['gravity','airDensity','temperature','wind','visibility','latitude','longitude','elevation'].map((key) => `<label><span>${key.replace(/([A-Z])/g, ' $1')}</span><input type="number" step="any" data-environment-field="${key}" value="${state.environment[key]}"></label>`).join('');
+  dom.environmentEditor.innerHTML = `${['gravity','airDensity','temperature','wind','visibility','latitude','longitude','elevation'].map((key) => `<label><span>${key.replace(/([A-Z])/g, ' $1')}</span><input type="number" step="any" data-environment-field="${key}" value="${state.environment[key] ?? ''}"></label>`).join('')}<label class="confirm"><input type="checkbox" data-environment-confirm ${state.environment.confirmed ? 'checked' : ''}><span>Engineer confirmed environment values</span></label>`;
 }
 
 function renderTestLibrary() {
-  const categories = ['All', ...new Set(TEST_LIBRARY.map((test) => test.category))];
+  const categories = ['All', ...new Set(availableTests().map((test) => test.category))];
   dom.testFilters.innerHTML = categories.map((category) => `<button class="${state.testFilter === category ? 'active' : ''}" data-test-filter="${category}">${category}</button>`).join('');
   const query = state.testSearch.toLowerCase();
   const tests = availableTests().filter((test) => (state.testFilter === 'All' || test.category === state.testFilter) && (!query || `${test.name} ${test.description} ${test.category}`.toLowerCase().includes(query)));
-  dom.testLibrary.innerHTML = tests.map((test) => `<label class="test-card ${state.selectedTestIds.includes(test.id) ? 'selected' : ''} ${test.compatible ? '' : 'incompatible'}"><input type="checkbox" data-test-id="${test.id}" ${state.selectedTestIds.includes(test.id) ? 'checked' : ''} ${test.compatible ? '' : 'disabled'}><div><b>${escapeHtml(test.name)}</b><small>${escapeHtml(test.description)}</small></div><em>${escapeHtml(test.category.toUpperCase())}</em></label>`).join('');
+  dom.testLibrary.innerHTML = tests.map((test) => `<label class="test-card ${test.custom ? 'custom' : ''} ${state.selectedTestIds.includes(test.id) ? 'selected' : ''} ${test.compatible ? '' : 'incompatible'}"><input type="checkbox" data-test-id="${test.id}" ${state.selectedTestIds.includes(test.id) ? 'checked' : ''} ${test.compatible ? '' : 'disabled'}><div><b>${escapeHtml(test.name)}</b><small>${escapeHtml(test.description)}</small></div><em>${escapeHtml(test.category.toUpperCase())}</em></label>`).join('');
+  const selectedFault = dom.customTestFault.value;
+  dom.customTestFault.innerHTML = profile().faults.map((fault) => `<option value="${escapeHtml(fault)}" ${fault === selectedFault ? 'selected' : ''}>${escapeHtml(FAULT_LIBRARY[fault]?.label || fault)}</option>`).join('');
+}
+
+function addCustomTest() {
+  const name = dom.customTestName.value.trim();
+  const fault = dom.customTestFault.value;
+  const assertion = dom.customTestAssertion.value.trim();
+  if (name.length < 3 || !profile().faults.includes(fault) || assertion.length < 8) { toast('Enter a name, compatible fault hook, and measurable assertion.'); return; }
+  const definition = {
+    id: `custom-${Date.now().toString(36)}`,
+    name: name.slice(0, 80),
+    category: 'Custom',
+    fault,
+    appliesTo: [state.manifest.family],
+    defaultSeverity: clamp(Number(dom.customTestSeverity.value) / 100 || .7, .1, 1),
+    duration: clamp(Number(dom.customTestDuration.value) || 6, 1, 20),
+    assertion: assertion.slice(0, 240),
+    description: `Project-specific test using the validated ${FAULT_LIBRARY[fault]?.label || fault} execution hook.`,
+    custom: true,
+    confirmed: true
+  };
+  state.customTests.push(definition);
+  state.selectedTestIds.push(definition.id);
+  rebuildScenario({ name: `${name} validation plan`, intent: assertion });
+  dom.customTestName.value = '';
+  dom.customTestAssertion.value = '';
+  dom.customTestEditor.classList.remove('open');
+  renderTestLibrary(); renderPlan();
+  toast(`${definition.name} added to this project.`);
 }
 
 function renderPlan() {
   dom.planTitle.textContent = state.scenario.name;
   dom.planDuration.textContent = `${state.scenario.duration.toFixed(0)} s`;
-  dom.planEnvironment.innerHTML = `<b>${escapeHtml(state.environment.name)}</b><small>${escapeHtml(state.environment.terrain)} / gravity ${state.environment.gravity} m/s2 / wind ${state.environment.wind} m/s</small>`;
+  dom.planEnvironment.innerHTML = `<b>${escapeHtml(state.environment.name)}</b><small>${escapeHtml(state.environment.terrain)} / gravity ${state.environment.gravity} m/s2 / wind ${state.environment.wind} m/s / ${state.environment.confirmed ? 'confirmed' : 'confirmation required'}</small>`;
   dom.planEvents.innerHTML = state.scenario.events.map((event, index) => {
     const meta = FAULT_LIBRARY[event.fault];
     return `<article class="plan-event" style="--event-color:${meta?.color || '#5eead4'}"><b>${escapeHtml(meta?.label || event.fault)}</b><small>T+${event.start.toFixed(1)} / ${event.duration.toFixed(1)} s / ${Math.round(event.severity * 100)}%</small><input type="range" min="10" max="100" value="${event.severity * 100}" data-event-severity="${index}" title="Severity"></article>`;
@@ -312,15 +369,16 @@ async function generateScenario() {
       state.scenario = payload.scenario;
     } catch {
       planLocally(prompt);
-      payload = { source: 'fallback', scenario: state.scenario };
+      payload = { source: 'fallback', scenario: state.scenario, environmentPatch: localEnvironmentProposal(prompt) };
     }
+    applyEnvironmentProposal(payload.environmentPatch || localEnvironmentProposal(prompt));
     state.scenario.environmentId = state.environment.id;
     state.scenario.events = state.scenario.events.map((event) => ({ ...event, testId: TEST_LIBRARY.find((test) => test.fault === event.fault)?.id || event.testId }));
     state.selectedTestIds = [...new Set(state.scenario.events.map((event) => event.testId).filter(Boolean))];
     state.scenario.selectedTestIds = clone(state.selectedTestIds);
     dom.aiMode.textContent = payload.source === 'openai' ? 'GPT-5.6 LIVE' : 'LOCAL PLANNER';
     dom.aiHelper.textContent = payload.source === 'openai' ? 'GPT-5.6 returned a schema-valid plan; the deterministic runtime will execute it.' : 'No API key was configured, so the transparent local planner produced this runnable plan.';
-    renderTestLibrary(); renderPlan();
+    renderEnvironments(); renderTestLibrary(); renderPlan();
     toast(`Scenario ready: ${state.scenario.name}`);
   } catch (error) { toast(error.message); }
   finally { dom.generateBtn.disabled = false; dom.generateBtn.textContent = 'Generate executable plan'; }
@@ -372,6 +430,7 @@ function renderRunConfiguration() {
   dom.runEnvironmentCard.innerHTML = `<b>${escapeHtml(state.environment.name)}</b><small>${escapeHtml(state.environment.body)} / ${state.environment.gravity} m/s2 / ${state.scenario.events.length} fault events</small>`;
   dom.sceneMachineName.textContent = profile().name;
   dom.sceneObjective.textContent = profile().objective;
+  dom.hilSafetyConfirm.checked = Boolean(state.manifest.safety?.benchChecklistConfirmed);
   const family = state.manifest.family;
   dom.metricContextLabel.textContent = family === 'legged' ? 'Joint load' : family === 'ground' ? 'Perception' : 'Attitude';
   dom.metricContextNote.textContent = family === 'legged' ? 'Peak limit 92%' : family === 'ground' ? 'Minimum 25%' : 'Peak limit 28 deg';
@@ -380,6 +439,11 @@ function renderRunConfiguration() {
 
 function toggleRun() {
   if (state.engine.state.completed) resetEngine();
+  if (!state.running && state.mode === 'HIL') {
+    if (!hil.connected) { toast('Connect the HIL controller before starting the run.'); return; }
+    if (hil.available && !dom.hilSafetyConfirm.checked) { toast('Confirm the bench-safety checklist before using real hardware.'); return; }
+    if (!hil.ready) { toast(hil.emergencyStopped ? 'Clear the emergency stop before running.' : 'Wait for a compatible controller handshake before running.'); return; }
+  }
   state.running = !state.running;
   dom.runBtn.textContent = state.running ? 'Pause run' : 'Resume run';
   state.lastFrame = performance.now();
@@ -401,16 +465,33 @@ function setMode(mode) {
 async function connectController() {
   if (state.mode !== 'HIL') setMode('HIL');
   try {
-    await hil.connect({ baudRate: state.manifest.interfaces?.[0]?.baudRate || 115200 });
+    if (hil.connected) {
+      state.running = false;
+      await hil.disconnect();
+      dom.connectBtn.textContent = 'Connect';
+      dom.connectorTitle.textContent = 'Controller bridge ready';
+      dom.connectorDetail.textContent = 'Connect at the declared baud rate';
+      resetEngine();
+      return;
+    }
+    if (hil.available && !dom.hilSafetyConfirm.checked) { toast('Confirm that the physical power stage and actuators are disabled before connecting.'); return; }
+    state.manifest.safety.benchChecklistConfirmed = dom.hilSafetyConfirm.checked;
+    hil.watchdogMs = Math.max(250, Number(state.manifest.safety?.watchdogMs) || 750);
+    await hil.connect({ baudRate: state.manifest.interfaces?.[0]?.baudRate || 115200, requireHandshake: true });
     dom.connectorTitle.textContent = hil.synthetic ? 'Synthetic controller connected' : 'Real controller connected';
-    dom.connectorDetail.textContent = hil.synthetic ? 'Browser lacks Web Serial; safe demo loop active' : 'Bidirectional sensor / actuator JSON';
+    dom.connectorDetail.textContent = hil.synthetic ? 'Browser lacks Web Serial; safe demo loop active' : `${hil.handshake.controller} / ${hil.handshake.firmware}`;
+    dom.connectBtn.textContent = 'Disconnect';
     resetEngine();
   } catch (error) { if (error.name !== 'NotFoundError') toast(`Controller connection failed: ${error.message}`); }
 }
 
 async function runSignalCheck() {
   try {
-    if (!hil.connected) await hil.connect({ baudRate: state.manifest.interfaces?.[0]?.baudRate || 115200 });
+    if (!hil.connected) {
+      if (hil.available && !dom.hilSafetyConfirm.checked) throw new Error('Confirm the bench-safety checklist before connecting real hardware.');
+      await hil.connect({ baudRate: state.manifest.interfaces?.[0]?.baudRate || 115200, requireHandshake: true });
+      dom.connectBtn.textContent = 'Disconnect';
+    }
     await hil.signalCheck();
     toast('Bench-safe logical signal check sent. Physical outputs remain disabled.');
   } catch (error) { if (error.name !== 'NotFoundError') toast(error.message); }
@@ -530,9 +611,10 @@ function openEvidence() {
   const report = state.engine.result || state.engine.buildReport();
   const metrics = report.metrics;
   const findings = report.overallAssessment === 'COMPLETE_WITH_FINDINGS';
-  dom.reportContent.innerHTML = `<section class="report-hero"><div class="assessment ${findings ? 'findings' : ''}">${escapeHtml(report.overallAssessment.replaceAll('_',' '))}</div><div><h3>${escapeHtml(report.machine.name)} / ${escapeHtml(report.scenario.name)}</h3><p>${escapeHtml(report.note)}</p><span class="report-id">${escapeHtml(report.runId)} / ${report.mode} / seed ${report.deterministicSeed} / ${escapeHtml(report.machineManifestFingerprint || 'no manifest fingerprint')}</span></div></section>
+  const invalid = report.overallAssessment === 'INVALID_RUN';
+  dom.reportContent.innerHTML = `<section class="report-hero"><div class="assessment ${invalid ? 'invalid' : findings ? 'findings' : ''}">${escapeHtml(report.overallAssessment.replaceAll('_',' '))}</div><div><h3>${escapeHtml(report.machine.name)} / ${escapeHtml(report.scenario.name)}</h3><p>${escapeHtml(report.note)}</p><span class="report-id">${escapeHtml(report.runId)} / ${report.mode} / seed ${report.deterministicSeed} / ${escapeHtml(report.machineManifestFingerprint || 'no manifest fingerprint')}</span></div></section>
     <section class="report-metrics"><article><span>FINAL DISTANCE</span><b>${metrics.finalDistance} m</b></article><article><span>PEAK ESTIMATE ERROR</span><b>${metrics.peakEstimateError} m</b></article><article><span>MIN SAFETY</span><b>${metrics.minimumSafetyMargin}%</b></article><article><span>FINAL BATTERY</span><b>${metrics.finalBattery}%</b></article></section>
-    <section><span class="eyebrow">INDIVIDUAL TEST CASE RESULTS</span>${report.testCases.map((test) => `<article class="test-result"><span class="test-status ${test.status.toLowerCase().replace('_','-')}">${escapeHtml(test.status)}</span><div><b>${escapeHtml(test.name)}</b><small>${escapeHtml(test.assertion)}</small><small>${escapeHtml(test.evidence)}</small></div></article>`).join('') || '<p class="helper">Run the configured plan to evaluate test cases.</p>'}</section>`;
+    <section><span class="eyebrow">INDIVIDUAL TEST CASE RESULTS</span>${report.testCases.map((test) => `<article class="test-result"><span class="test-status ${test.status.toLowerCase().replaceAll('_','-')}">${escapeHtml(test.status)}</span><div><b>${escapeHtml(test.name)}</b><small>${escapeHtml(test.assertion)}</small><small>${escapeHtml(test.evidence)}</small>${test.supportingInterval ? `<small>Evidence interval T+${test.supportingInterval.start}-${test.supportingInterval.end} s / ${escapeHtml(test.thresholdSource)}</small>` : ''}</div></article>`).join('') || '<p class="helper">Run the configured plan to evaluate test cases.</p>'}</section>`;
   dom.reportDialog.showModal();
 }
 
@@ -543,15 +625,30 @@ function download(name, content, type) {
 
 function downloadManifest() { download(`${state.manifest.id}.vidyut.json`, JSON.stringify(state.manifest, null, 2), 'application/json'); }
 function downloadReport() { const report = state.engine.result || state.engine.buildReport(); download(`${report.runId}.json`, JSON.stringify(report, null, 2), 'application/json'); }
-function downloadCsv() { const data = state.engine.telemetry; if (!data.length) { toast('Run the plan before exporting telemetry.'); return; } const headers = ['t','x','y','targetDistance','stability','battery','perception','link','attitude','jointLoad','latencyMs','computeLoad','packetDelivery','controller','faults']; const rows = data.map((row) => headers.map((key) => `"${String(Array.isArray(row[key]) ? row[key].join('|') : row[key] ?? '').replaceAll('"','""')}"`).join(',')); download(`vidyut-${state.profileId}-telemetry.csv`, [headers.join(','), ...rows].join('\n'), 'text/csv'); }
+function downloadHtmlReport() {
+  const report = state.engine.result || state.engine.buildReport();
+  const testRows = report.testCases.map((test) => `<tr><td>${escapeHtml(test.status)}</td><td>${escapeHtml(test.name)}</td><td>${escapeHtml(test.assertion)}</td><td>${escapeHtml(test.evidence)}</td><td>${test.supportingInterval ? `${test.supportingInterval.start}-${test.supportingInterval.end} s` : '-'}</td></tr>`).join('');
+  const findings = report.findings.map((finding) => `<li><b>${escapeHtml(finding.title)}</b> - ${escapeHtml(finding.evidence)}</li>`).join('');
+  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(report.runId)} - VIDYUT evidence</title><style>body{font:14px system-ui,sans-serif;color:#142033;max-width:1100px;margin:40px auto;padding:0 24px}header{border-bottom:4px solid #0f766e;padding-bottom:18px}h1{margin:.2rem 0}small{color:#526275}section{margin:28px 0}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.summary div{border:1px solid #ccd6e0;padding:12px}.summary b{display:block;font-size:22px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccd6e0;padding:9px;text-align:left;vertical-align:top}th{background:#e8f4f2}pre{white-space:pre-wrap;word-break:break-word;background:#f5f7f9;padding:16px;border:1px solid #ccd6e0}.notice{padding:12px;border-left:4px solid #b45309;background:#fff7ed}@media(max-width:720px){.summary{grid-template-columns:1fr 1fr}table{font-size:11px}}</style></head><body><header><small>BAC VIDYUT / ENGINEERING EVIDENCE V2</small><h1>${escapeHtml(report.machine.name)} - ${escapeHtml(report.scenario.name)}</h1><p>${escapeHtml(report.runId)} / ${escapeHtml(report.overallAssessment)} / ${escapeHtml(report.mode)} / seed ${report.deterministicSeed}</p></header><p class="notice">Assertion-level prototype evidence only. This report is not certification or a whole-machine safety verdict.</p><section class="summary"><div><small>Final distance</small><b>${report.metrics.finalDistance} m</b></div><div><small>Peak estimate error</small><b>${report.metrics.peakEstimateError} m</b></div><div><small>Minimum safety</small><b>${report.metrics.minimumSafetyMargin}%</b></div><div><small>Final battery</small><b>${report.metrics.finalBattery}%</b></div></section><section><h2>Test cases</h2><table><thead><tr><th>Status</th><th>Test</th><th>Assertion</th><th>Measured evidence</th><th>Interval</th></tr></thead><tbody>${testRows}</tbody></table></section><section><h2>Findings</h2><ul>${findings}</ul></section><section><h2>Reproducibility</h2><p>Manifest ${escapeHtml(report.machineManifestFingerprint || 'unavailable')} / scenario ${escapeHtml(report.scenarioFingerprint || 'unavailable')} / simulator ${escapeHtml(`${report.simulator?.id || ''} ${report.simulator?.version || ''}`)}</p></section><section><h2>Complete machine-readable evidence</h2><pre>${escapeHtml(JSON.stringify(report, null, 2))}</pre></section></body></html>`;
+  download(`${report.runId}.html`, html, 'text/html');
+}
+function downloadCsv() { const data = state.engine.telemetry; if (!data.length) { toast('Run the plan before exporting telemetry.'); return; } const headers = ['t','x','y','observedX','observedY','vx','vy','altitude','heading','targetDistance','stability','battery','perception','link','attitude','jointLoad','latencyMs','computeLoad','packetDelivery','controller','actuatorSequence','actuatorOutputs','faults']; const rows = data.map((row) => headers.map((key) => `"${String(Array.isArray(row[key]) ? row[key].join('|') : row[key] ?? '').replaceAll('"','""')}"`).join(',')); download(`vidyut-${state.profileId}-telemetry.csv`, [headers.join(','), ...rows].join('\n'), 'text/csv'); }
 
 async function loadReplay(file) {
   try {
     const evidence = JSON.parse(await file.text());
     if (!evidence.replay?.scenario) throw new Error('This file does not contain a VIDYUT replay configuration.');
-    if (state.profiles[evidence.replay.profileId]) state.profileId = evidence.replay.profileId;
-    state.manifest = clone(profile().manifest);
+    if (evidence.replay.manifest) {
+      state.manifest = normalizeMachineManifest(evidence.replay.manifest);
+      const replayProfile = profileFromManifest(state.manifest);
+      state.profiles[replayProfile.id] = replayProfile;
+      state.profileId = replayProfile.id;
+    } else {
+      if (state.profiles[evidence.replay.profileId]) state.profileId = evidence.replay.profileId;
+      state.manifest = clone(profile().manifest);
+    }
     state.scenario = clone(evidence.replay.scenario);
+    state.customTests = clone(state.scenario.testDefinitions || []);
     state.selectedTestIds = clone(state.scenario.selectedTestIds || []);
     state.environment = clone(evidence.replay.environment || ENVIRONMENTS[0]);
     dom.seedInput.value = evidence.replay.seed || 42;
@@ -563,6 +660,7 @@ async function loadReplay(file) {
 
 function startGuidedDemo() {
   selectPreset('drone');
+  setMode('SIL');
   dom.seedInput.value = 42; dom.speedSelect.value = 3; state.speed = 3; state.guided = true;
   goPage('run'); state.running = true; state.lastFrame = performance.now(); dom.runBtn.textContent = 'Pause run';
   toast('Judge path started: drone / Himalayan range / GNSS + link + wind.');
@@ -572,6 +670,7 @@ function animationLoop(now) {
   const elapsed = Math.min((now - state.lastFrame) / 1000, .1); state.lastFrame = now;
   if (state.running && state.engine && !state.engine.state.completed) {
     const step = elapsed * state.speed;
+    if (state.mode === 'HIL') state.engine.recordHilSession(hil.snapshot());
     state.engine.step(step, state.hardwareSample, state.actuatorCommand);
     const snapshot = state.engine.snapshot();
     if (state.mode === 'HIL' && hil.connected) hil.publishSensorFrame(snapshot, state.environment, snapshot.activeFaults).catch(() => {});
@@ -617,21 +716,37 @@ function bindEvents() {
   $('#signal-check-btn').addEventListener('click', runSignalCheck);
   dom.environmentGrid.addEventListener('click', (event) => { const button = event.target.closest('[data-environment]'); if (button) selectEnvironment(button.dataset.environment); });
   $('#customize-environment-btn').addEventListener('click', () => dom.environmentEditor.classList.toggle('open'));
-  dom.environmentEditor.addEventListener('change', (event) => { const input = event.target.closest('[data-environment-field]'); if (!input) return; state.environment = { ...state.environment, id: 'custom', name: `Custom ${state.environment.name}`, [input.dataset.environmentField]: Number(input.value) }; state.scenario.environmentId = 'custom'; renderEnvironments(); dom.environmentEditor.classList.add('open'); renderPlan(); });
+  dom.environmentEditor.addEventListener('change', (event) => {
+    const confirmation = event.target.closest('[data-environment-confirm]');
+    if (confirmation) { state.environment = { ...state.environment, confirmed: confirmation.checked }; renderPlan(); return; }
+    const input = event.target.closest('[data-environment-field]');
+    if (!input) return;
+    state.environment = { ...state.environment, id: 'custom', name: state.environment.id === 'custom' ? state.environment.name : `Custom ${state.environment.name}`, [input.dataset.environmentField]: Number(input.value), confirmed: false, version: 'custom-v1', provenance: 'User-edited environment values' };
+    state.scenario.environmentId = 'custom'; renderEnvironments(); dom.environmentEditor.classList.add('open'); renderPlan();
+  });
   dom.testFilters.addEventListener('click', (event) => { const button = event.target.closest('[data-test-filter]'); if (button) { state.testFilter = button.dataset.testFilter; renderTestLibrary(); } });
   dom.testSearch.addEventListener('input', () => { state.testSearch = dom.testSearch.value; renderTestLibrary(); });
+  $('#custom-test-toggle').addEventListener('click', () => dom.customTestEditor.classList.toggle('open'));
+  $('#custom-test-add').addEventListener('click', addCustomTest);
   dom.testLibrary.addEventListener('change', (event) => { const input = event.target.closest('[data-test-id]'); if (input) toggleTest(input.dataset.testId, input.checked); });
   dom.planEvents.addEventListener('input', (event) => { const input = event.target.closest('[data-event-severity]'); if (!input) return; state.scenario.events[Number(input.dataset.eventSeverity)].severity = Number(input.value) / 100; renderPlan(); });
   dom.generateBtn.addEventListener('click', generateScenario);
   dom.seedInput.addEventListener('change', resetEngine); dom.speedSelect.addEventListener('change', () => state.speed = Number(dom.speedSelect.value));
   $$('.segmented button').forEach((button) => button.addEventListener('click', () => setMode(button.dataset.mode)));
+  dom.hilSafetyConfirm.addEventListener('change', () => { state.manifest.safety.benchChecklistConfirmed = dom.hilSafetyConfirm.checked; });
   dom.connectBtn.addEventListener('click', connectController); $('#estop-btn').addEventListener('click', () => hil.emergencyStop()); $('#clear-estop-btn').addEventListener('click', () => hil.clearEmergencyStop());
   dom.runBtn.addEventListener('click', toggleRun); dom.resetBtn.addEventListener('click', resetEngine);
-  dom.evidenceBtn.addEventListener('click', openEvidence); $('#close-report').addEventListener('click', () => dom.reportDialog.close()); $('#download-report').addEventListener('click', downloadReport); $('#download-csv').addEventListener('click', downloadCsv); dom.replayInput.addEventListener('change', () => loadReplay(dom.replayInput.files[0]));
+  dom.evidenceBtn.addEventListener('click', openEvidence); $('#close-report').addEventListener('click', () => dom.reportDialog.close()); $('#download-report').addEventListener('click', downloadReport); $('#download-html').addEventListener('click', downloadHtmlReport); $('#download-csv').addEventListener('click', downloadCsv); dom.replayInput.addEventListener('change', () => loadReplay(dom.replayInput.files[0]));
   dom.guidedDemoBtn.addEventListener('click', startGuidedDemo); dom.guidedRunBtn.addEventListener('click', startGuidedDemo);
   hil.addEventListener('telemetry', (event) => { state.hardwareSample = event.detail; dom.controllerIo.textContent = JSON.stringify(event.detail, null, 2); });
   hil.addEventListener('actuators', (event) => { state.actuatorCommand = event.detail; dom.controllerIo.textContent = JSON.stringify(event.detail, null, 2); });
-  hil.addEventListener('status', (event) => { dom.connectorDetail.textContent = event.detail.detail; toast(event.detail.detail); });
+  hil.addEventListener('status', (event) => {
+    dom.connectorDetail.textContent = event.detail.detail;
+    dom.connectBtn.textContent = event.detail.connected ? 'Disconnect' : 'Connect';
+    if (event.detail.emergencyStopped) { state.running = false; dom.runBtn.textContent = 'Resume run'; }
+    toast(event.detail.detail);
+  });
+  hil.addEventListener('integrity', (event) => { dom.controllerIo.textContent = JSON.stringify({ integrity: event.detail.integrity, handshake: event.detail.handshake, detail: event.detail.detail }, null, 2); });
   hil.addEventListener('error', (event) => toast(event.detail.message || 'Controller bridge error.'));
   window.addEventListener('resize', () => { if (state.page === 'run' && state.engine) updateUI(state.engine.snapshot()); });
 }

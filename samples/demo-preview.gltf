@@ -1,0 +1,8 @@
+{
+  "asset": { "version": "2.0", "generator": "BAC VIDYUT sample" },
+  "scene": 0,
+  "scenes": [{ "name": "Rescue drone preview", "nodes": [0] }],
+  "nodes": [{ "name": "Drone body", "mesh": 0 }],
+  "meshes": [{ "name": "Drone body preview", "primitives": [] }],
+  "materials": []
+}

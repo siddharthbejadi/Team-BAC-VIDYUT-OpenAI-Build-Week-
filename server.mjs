@@ -72,6 +72,45 @@ function normalizeScenario(scenario, profile) {
   };
 }
 
+function normalizeEnvironmentPatch(patch = {}, existing = {}) {
+  const bounded = (key, min, max) => patch[key] == null ? null : Number(Math.max(min, Math.min(max, Number(patch[key]))).toFixed(6));
+  return {
+    id: 'custom-ai',
+    name: String(patch.name || existing.name || 'Custom environment').slice(0, 80),
+    body: String(patch.body || existing.body || 'Earth').slice(0, 40),
+    terrain: String(patch.terrain || existing.terrain || 'User-defined terrain').slice(0, 160),
+    gravity: bounded('gravity', 0, 30),
+    airDensity: bounded('airDensity', 0, 2.5),
+    temperature: bounded('temperature', -200, 100),
+    wind: bounded('wind', 0, 100),
+    visibility: bounded('visibility', 0, 100),
+    latitude: bounded('latitude', -90, 90),
+    longitude: bounded('longitude', -180, 180),
+    elevation: bounded('elevation', -12_000, 100_000),
+    rationale: String(patch.rationale || 'Environment parameters were proposed from the mission description.').slice(0, 300),
+    confirmed: false,
+    provenance: 'GPT-5.6 proposal; engineer confirmation required before engineering use.'
+  };
+}
+
+function fallbackEnvironment(prompt, existing = {}) {
+  const text = prompt.toLowerCase();
+  const patch = { name: existing.name, body: existing.body, terrain: existing.terrain, rationale: 'Transparent keyword and numeric extraction from the mission description.' };
+  const presets = [
+    [['mars', 'martian'], { name: 'Mars mission environment', body: 'Mars', terrain: 'Rock, regolith, crater slopes and dust', gravity: 3.721, airDensity: .02, temperature: -55, wind: 18, visibility: 61 }],
+    [['moon', 'lunar'], { name: 'Lunar mission environment', body: 'Moon', terrain: 'Regolith, craters and hard shadows', gravity: 1.62, airDensity: 0, temperature: -90, wind: 0, visibility: 76 }],
+    [['himalaya', 'mountain', 'ridge'], { name: 'Himalayan mission environment', body: 'Earth', terrain: 'Mountain ridges and deep valleys', gravity: 9.80665, airDensity: .82, temperature: -8, wind: 12, visibility: 72 }],
+    [['desert', 'dune'], { name: 'Desert mission environment', body: 'Earth', terrain: 'Sand, dust and dunes', gravity: 9.80665, airDensity: 1.12, temperature: 46, wind: 9, visibility: 58 }],
+    [['arctic', 'ice', 'polar'], { name: 'Arctic mission environment', body: 'Earth', terrain: 'Ice, snow and low-contrast horizon', gravity: 9.80665, airDensity: 1.34, temperature: -32, wind: 15, visibility: 52 }],
+    [['urban', 'city'], { name: 'Urban canyon environment', body: 'Earth', terrain: 'Buildings, alleys and reflective surfaces', gravity: 9.80665, airDensity: 1.19, temperature: 24, wind: 7, visibility: 80 }]
+  ];
+  const preset = presets.find(([tokens]) => tokens.some((token) => text.includes(token)))?.[1];
+  if (preset) Object.assign(patch, preset);
+  const patterns = { gravity: /gravity\s*(?:=|of|at)?\s*(-?\d+(?:\.\d+)?)/i, airDensity: /air\s*density\s*(?:=|of|at)?\s*(-?\d+(?:\.\d+)?)/i, temperature: /temperature\s*(?:=|of|at)?\s*(-?\d+(?:\.\d+)?)/i, wind: /wind(?:\s*speed)?\s*(?:=|of|at)?\s*(\d+(?:\.\d+)?)/i, visibility: /visibility\s*(?:=|of|at)?\s*(\d+(?:\.\d+)?)/i, elevation: /(?:elevation|altitude)\s*(?:=|of|at)?\s*(-?\d+(?:\.\d+)?)/i };
+  for (const [key, pattern] of Object.entries(patterns)) { const match = prompt.match(pattern); if (match) patch[key] = Number(match[1]); }
+  return normalizeEnvironmentPatch(patch, existing);
+}
+
 function fallbackScenario(prompt, profile) {
   const text = prompt.toLowerCase();
   const ranked = profile.faults.map((fault) => {
@@ -126,9 +165,18 @@ async function openAiScenario(prompt, profile, environment = {}) {
           },
           required: ['fault', 'start', 'duration', 'severity']
         }
+      },
+      environmentPatch: {
+        type: 'object', additionalProperties: false,
+        properties: {
+          name: { type: 'string' }, body: { type: 'string' }, terrain: { type: 'string' },
+          gravity: { type: ['number', 'null'] }, airDensity: { type: ['number', 'null'] }, temperature: { type: ['number', 'null'] }, wind: { type: ['number', 'null'] }, visibility: { type: ['number', 'null'] }, latitude: { type: ['number', 'null'] }, longitude: { type: ['number', 'null'] }, elevation: { type: ['number', 'null'] },
+          rationale: { type: 'string' }
+        },
+        required: ['name','body','terrain','gravity','airDensity','temperature','wind','visibility','latitude','longitude','elevation','rationale']
       }
     },
-    required: ['name', 'intent', 'duration', 'events']
+    required: ['name', 'intent', 'duration', 'events', 'environmentPatch']
   };
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 28_000);
@@ -153,7 +201,8 @@ async function openAiScenario(prompt, profile, environment = {}) {
     });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error?.message || `OpenAI request failed (${response.status}).`);
-    return normalizeScenario(JSON.parse(extractOutputText(payload)), profile);
+    const plan = JSON.parse(extractOutputText(payload));
+    return { scenario: normalizeScenario(plan, profile), environmentPatch: normalizeEnvironmentPatch(plan.environmentPatch, environment) };
   } finally {
     clearTimeout(timeout);
   }
@@ -220,17 +269,21 @@ async function handleApi(request, response, url) {
       const profile = safeProfile(body.profile);
       if (prompt.length < 8) return json(response, 400, { error: 'Describe the mission risk in at least 8 characters.' });
       let scenario;
+      let environmentPatch;
       let source;
       if (process.env.OPENAI_API_KEY) {
-        scenario = await openAiScenario(prompt, profile, body.environment || {});
+        const plan = await openAiScenario(prompt, profile, body.environment || {});
+        scenario = plan.scenario;
+        environmentPatch = plan.environmentPatch;
         source = 'openai';
       } else {
         scenario = fallbackScenario(prompt, profile);
+        environmentPatch = fallbackEnvironment(prompt, body.environment || {});
         source = 'fallback';
       }
       const validation = validateScenario(scenario, profile);
       if (!validation.valid) throw new Error(validation.errors.join(' '));
-      return json(response, 200, { scenario, source, model: source === 'openai' ? model : null });
+      return json(response, 200, { scenario, environmentPatch, source, model: source === 'openai' ? model : null });
     } catch (error) {
       return json(response, 500, { error: error.name === 'AbortError' ? 'GPT-5.6 timed out; retry or use demo mode.' : error.message });
     }

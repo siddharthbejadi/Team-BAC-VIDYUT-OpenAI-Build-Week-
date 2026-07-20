@@ -36,10 +36,10 @@
           </section>
 
           <section class="card import-section">
-            <div class="card-header"><div><span class="eyebrow">MACHINE PACKAGE</span><h2>Import engineering sources</h2></div><span class="format-chip">JSON / URDF / SDF / STEP / KiCad</span></div>
+            <div class="card-header"><div><span class="eyebrow">MACHINE PACKAGE</span><h2>Import engineering sources</h2></div><span class="format-chip">ZIP / JSON / YAML / URDF / SDF / STEP / glTF / KiCad</span></div>
             <label class="dropzone" id="machine-dropzone" for="machine-files">
-              <input id="machine-files" type="file" multiple accept=".json,.urdf,.sdf,.xml,.step,.stp,.net,.zip,.pdf" hidden>
-              <span class="drop-icon">+</span><b>Drop a CAD, robot description, netlist, or VIDYUT manifest</b><small>Upload package contents together. Reference PDFs are recorded; structured engineering values still require confirmation.</small>
+              <input id="machine-files" type="file" multiple accept=".json,.yaml,.yml,.urdf,.xacro,.sdf,.xml,.step,.stp,.gltf,.glb,.net,.zip,.pdf" hidden>
+              <span class="drop-icon">+</span><b>Drop a CAD, robot description, netlist, or VIDYUT package</b><small>VIDYUT ZIP packages are CRC-checked and expanded in the browser. Reference PDFs are recorded; structured engineering values still require confirmation.</small>
             </label>
             <div id="import-notices" class="notice-list"></div>
             <div id="source-files" class="source-files"></div>
@@ -97,7 +97,8 @@
             <div id="environment-editor" class="environment-editor"></div>
           </section>
           <section class="card">
-            <div class="card-header"><div><span class="eyebrow">DEFAULT TEST LIBRARY / 25</span><h2>Select one or many tests</h2></div><label class="search-box"><span>Search</span><input id="test-search" placeholder="GNSS, power, wind..."></label></div>
+            <div class="card-header"><div><span class="eyebrow">DEFAULT TEST LIBRARY / 25</span><h2>Select one or many tests</h2></div><div class="component-actions"><label class="search-box"><span>Search</span><input id="test-search" placeholder="GNSS, power, wind..."></label><button class="button ghost compact" id="custom-test-toggle">+ Custom test</button></div></div>
+            <div id="custom-test-editor" class="custom-test-editor"><div class="form-grid two"><label><span>Test name</span><input id="custom-test-name" placeholder="High-altitude GNSS recovery"></label><label><span>Executable fault hook</span><select id="custom-test-fault"></select></label><label><span>Severity %</span><input id="custom-test-severity" type="number" min="10" max="100" value="70"></label><label><span>Duration seconds</span><input id="custom-test-duration" type="number" min="1" max="20" value="6"></label></div><label><span>Measurable assertion</span><input id="custom-test-assertion" placeholder="Record recovery while minimum safety remains above the approved threshold"></label><button class="button secondary compact" id="custom-test-add">Add to this project</button></div>
             <div id="test-filters" class="filter-row"></div>
             <div id="test-library" class="test-library"></div>
           </section>
@@ -123,7 +124,7 @@
       <div class="run-grid">
         <aside class="run-left panel-scroll">
           <section><div class="eyebrow-row"><span>01</span><b>RUN CONFIGURATION</b></div><div id="run-machine-card" class="run-summary-card"></div><div id="run-environment-card" class="run-summary-card"></div><button class="button ghost full" data-go-page="scenario">Edit scenario</button></section>
-          <section><div class="eyebrow-row"><span>02</span><b>EXECUTION MODE</b></div><div class="segmented" role="group"><button class="active" data-mode="SIL"><b>SIL</b><small>Virtual controller</small></button><button data-mode="HIL"><b>HIL</b><small>Real controller</small></button></div><div class="connector-card"><div><b id="connector-title">Controller emulated</b><small id="connector-detail">Deterministic SIL adapter active</small></div><button id="connect-btn" class="icon-button" title="Connect controller">Connect</button></div><div class="hil-actions"><button class="button danger compact" id="estop-btn">Emergency stop</button><button class="button ghost compact" id="clear-estop-btn">Clear</button></div><small class="bench-safe">BENCH SAFE: physical outputs are always disabled.</small></section>
+          <section><div class="eyebrow-row"><span>02</span><b>EXECUTION MODE</b></div><div class="segmented" role="group"><button class="active" data-mode="SIL"><b>SIL</b><small>Virtual controller</small></button><button data-mode="HIL"><b>HIL</b><small>Real controller</small></button></div><div class="connector-card"><div><b id="connector-title">Controller emulated</b><small id="connector-detail">Deterministic SIL adapter active</small></div><button id="connect-btn" class="icon-button" title="Connect controller">Connect</button></div><label class="hil-safety-check"><input id="hil-safety-confirm" type="checkbox"><span>I confirm the physical power stage and actuators are disconnected or hardware-disabled.</span></label><div class="hil-actions"><button class="button danger compact" id="estop-btn">Emergency stop</button><button class="button ghost compact" id="clear-estop-btn">Clear</button></div><small class="bench-safe">BENCH SAFE: physical outputs are always disabled. A compatible controller handshake and watchdog are mandatory.</small></section>
           <section><div class="eyebrow-row"><span>03</span><b>EXECUTE</b></div><div class="run-actions"><button class="button primary" id="run-btn">Run test plan</button><button class="button ghost square" id="reset-btn">Reset</button></div><button class="button secondary full" id="guided-run-btn">Run 60-second judge path</button></section>
         </aside>
 
@@ -148,7 +149,7 @@
   <dialog id="report-dialog">
     <div class="dialog-header"><div><span class="eyebrow">VIDYUT EVIDENCE / V2</span><h2>Engineering evidence report</h2></div><button id="close-report" class="icon-button">Close</button></div>
     <div id="report-content"></div>
-    <div class="dialog-actions"><label class="button ghost" for="replay-input">Load replay<input id="replay-input" type="file" accept=".json,application/json" hidden></label><button class="button ghost" id="download-csv">Telemetry CSV</button><button class="button primary" id="download-report">Evidence JSON</button></div>
+    <div class="dialog-actions"><label class="button ghost" for="replay-input">Load replay<input id="replay-input" type="file" accept=".json,application/json" hidden></label><button class="button ghost" id="download-csv">Telemetry CSV</button><button class="button ghost" id="download-html">Evidence HTML</button><button class="button primary" id="download-report">Evidence JSON</button></div>
   </dialog>
   <div class="toast" id="toast" role="status"></div>
   <script type="module" src="/js/app.js"></script>

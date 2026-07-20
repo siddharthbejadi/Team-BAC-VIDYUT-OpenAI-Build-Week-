@@ -8,18 +8,19 @@ The hackathon demonstration focuses on a drone. Working reference profiles also 
 
 - A three-stage workflow: **Machine setup -> Scenario builder -> Run & evidence**.
 - A versioned `vidyut.machine.v2` manifest combining geometry, physical properties, components, connections, interfaces, assumptions, and confirmations.
-- Multi-file import for VIDYUT JSON, URDF, SDF, STEP/STP metadata, KiCad XML netlists, and reference attachments.
+- Multi-file import for VIDYUT JSON/YAML, URDF/Xacro, SDF, STEP/STP metadata, glTF/GLB previews, KiCad XML netlists, reference attachments, and CRC-verified `.vidyut.zip` packages.
 - URDF/SDF link, joint, inertial, limit, and collision extraction; STEP units/product extraction with explicit confirmation requirements.
 - A component editor and wiring editor.
-- Pre-run checks for mass/components, voltage range, polarity patterns, duplicate drivers, component/pin references, PWM frequency, UART direction, I2C address conflicts, power budget, and unpowered loads.
+- Pre-run checks for geometry, mass/inertia/centre-of-mass consistency, link and joint topology, required and duplicate parts, voltage range, polarity patterns, regulators, duplicate drivers, component/pin references, PWM frequency, SPI chip-select reuse, UART direction/rate, I2C address conflicts by bus, CAN IDs/termination, controller mappings, power budget, unpowered loads, and bench-safety declarations.
 - An offline starter component catalog plus optional GPT-5.6 web research for unknown part numbers. AI-researched fields stay unconfirmed until an engineer checks the linked source.
-- Seven environment presets: Himalayan range, urban canyon, desert, Arctic, rainforest, lunar south pole, and Mars crater rim; every numeric field can be customized.
+- Seven versioned environment presets: Himalayan range, urban canyon, desert, Arctic, rainforest, lunar south pole, and Mars crater rim. Every numeric field can be customized; GPT-5.6 or the transparent fallback can propose bounded values that remain unconfirmed until an engineer approves them.
 - Exactly 25 selectable test templates across navigation, sensing, environment, actuation, power, communication, compute, mission, and multi-fault categories.
 - A deterministic, seed-based executor with aerial, ground, legged, and spacecraft behavior.
 - Truth-versus-controller visualization, live telemetry, event traces, recovery measurement, and per-test PASS/FAIL/NOT_RUN results.
-- Evidence schema `vidyut.evidence.v2`, JSON/CSV export, manifest fingerprinting, and replay configuration import.
-- A bidirectional Web Serial HIL bridge: virtual sensor injection goes to the real controller and normalized actuator commands return to the virtual machine.
-- Bench-safe HIL invariants, logical signal check, clamps, and emergency stop. VIDYUT never enables physical outputs in this prototype.
+- Evidence schema `vidyut.evidence.v2`, JSON/CSV/self-contained HTML export, assertion thresholds and supporting intervals, manifest/scenario fingerprints, run-integrity status, controller I/O evidence, and replay configuration import.
+- A bidirectional Web Serial HIL bridge: virtual sensor injection goes to the real controller and normalized actuator commands return to and influence the virtual machine.
+- Mandatory protocol handshake, sequence/integrity counters, a 750 ms command watchdog, logical signal check, command clamps, and latched emergency stop. VIDYUT never enables physical outputs in this prototype.
+- Project-specific tests built from validated deterministic fault hooks, with a user-defined measurable assertion preserved in the evidence.
 - Optional GPT-5.6 structured scenario planning through the OpenAI Responses API, with a transparent deterministic fallback when no API key is configured.
 - A responsive UI and one-click judge demo.
 
@@ -31,7 +32,7 @@ This prototype is functional, but it is not a certified physics model or safety 
 - URDF/SDF physical fields are imported when present but still require validation against the real assembly.
 - GPT-5.6 organizes scenario intent and researches component drafts. It does not calculate the authoritative physics or declare the machine safe.
 - The built-in executor is deterministic and inspectable for the hackathon. Production fidelity should come from adapters to PX4/Gazebo, ROS 2, Isaac Sim, MuJoCo, or the customer's selected backend.
-- The browser HIL path proves bidirectional controller integration while the machine is stationary. Production HIL needs isolated electrical I/O, watchdogs, hard real-time synchronization, and a physical emergency stop.
+- The browser HIL path proves bidirectional controller integration while the machine is stationary. Production HIL still needs isolated electrical I/O, hard real-time synchronization, a physical emergency stop, and validation on the selected controller.
 
 ## Run locally
 
@@ -63,10 +64,10 @@ Fast path:
 
 Full path:
 
-1. Use a reference machine or import [`samples/custom-machine.json`](samples/custom-machine.json).
+1. Use a reference machine or import [`samples/demo-machine.vidyut.zip`](samples/demo-machine.vidyut.zip), [`samples/demo-machine.yaml`](samples/demo-machine.yaml), or [`samples/custom-machine.json`](samples/custom-machine.json).
 2. Confirm readiness has zero blockers. Import [`samples/invalid-voltage-machine.json`](samples/invalid-voltage-machine.json) to see a deliberately blocked package.
 3. Choose an environment and any compatible tests from the 25-test library.
-4. Run in SIL and export evidence JSON plus telemetry CSV.
+4. Run in SIL and export evidence JSON, telemetry CSV, and the self-contained HTML report.
 5. Load the evidence JSON to restore its replay configuration.
 
 Detailed paths are in [`docs/TESTING.md`](docs/TESTING.md). The machine schema is in [`docs/MACHINE_PACKAGE_SPEC.md`](docs/MACHINE_PACKAGE_SPEC.md). The HIL contract and firmware example are in [`docs/HIL_PROTOCOL.md`](docs/HIL_PROTOCOL.md) and [`samples/vidyut-controller-example.ino`](samples/vidyut-controller-example.ino).
@@ -85,8 +86,10 @@ The suite verifies:
 - deterministic telemetry and per-test results;
 - pre-run `NOT_RUN` evidence behavior;
 - readiness-valid built-in machines;
-- incompatible voltage, over-current, duplicate drivers, and I2C conflicts;
-- URDF, STEP, and KiCad parsing.
+- incompatible voltage, over-current, duplicate drivers, I2C/SPI/UART/CAN conflicts, and mechanical consistency;
+- YAML, verified ZIP, glTF/GLB, URDF, STEP, and KiCad parsing;
+- HIL handshake, clamps, emergency stop, watchdog invalidation, and controller evidence;
+- custom executable test definitions.
 
 ## Architecture
 
@@ -136,6 +139,8 @@ test/engine.test.mjs          Automated requirement verification
 samples/                      Ready, invalid, URDF, KiCad, and controller examples
 docs/                         Testing, package, HIL, research, and submission material
 ```
+
+The exact implementation status and remaining external dependencies are tracked in [`docs/IMPLEMENTATION_AUDIT.md`](docs/IMPLEMENTATION_AUDIT.md).
 
 ## License
 

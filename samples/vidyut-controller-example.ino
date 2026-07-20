@@ -6,7 +6,7 @@ static String line;
 static bool emergencyStopped = false;
 
 void sendHelloAck() {
-  Serial.println("{\"type\":\"hello_ack\",\"protocol\":\"vidyut.hil.v1\",\"controller\":\"Arduino bench example\",\"firmware\":\"0.1.0\"}");
+  Serial.println("{\"type\":\"hello_ack\",\"protocol\":\"vidyut.hil.v1\",\"controller\":\"Arduino bench example\",\"firmware\":\"0.3.0\",\"benchSafe\":true,\"physicalOutputsAllowed\":false}");
 }
 
 void sendTelemetry(unsigned long sequence) {
@@ -43,6 +43,7 @@ void handleLine(const String &json) {
   unsigned long sequence = input["sequence"] | 0;
   if (strcmp(type, "hello") == 0) sendHelloAck();
   else if (strcmp(type, "emergency_stop") == 0) emergencyStopped = true;
+  else if (strcmp(type, "clear_emergency_stop") == 0) emergencyStopped = false;
   else if (strcmp(type, "signal_check") == 0) sendTelemetry(sequence);
   else if (strcmp(type, "sensor_frame") == 0) {
     float sensedX = input["sensors"]["position"][0] | 0.0f;

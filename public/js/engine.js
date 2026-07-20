@@ -3,6 +3,12 @@ import { manifestFingerprint } from './manifest.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const round = (value, digits = 2) => Number(value.toFixed(digits));
+const fingerprint = (value) => {
+  const input = JSON.stringify(value);
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) { hash ^= input.charCodeAt(index); hash = Math.imul(hash, 16777619); }
+  return `fnv1a-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+};
 
 export function seededRandom(seed = 42) {
   let state = (Number(seed) || 42) >>> 0;
@@ -42,6 +48,7 @@ export class VidyutEngine {
     this.readiness = options.readiness || null;
     this.adapter = options.adapter || (this.mode === 'HIL' ? 'web-serial' : 'deterministic-sil');
     this.lastActuatorCommand = null;
+    this.simulator = { id: 'vidyut-fast-demo', version: '0.3.0', timeStepPolicy: 'bounded-variable-dt', fidelity: 'prototype-deterministic' };
     this.reset();
   }
 
@@ -73,6 +80,12 @@ export class VidyutEngine {
       ,packetDelivery: 100
     };
     this.telemetry = [];
+    this.hardwareTelemetry = [];
+    this.actuatorCommands = [];
+    this.hilSession = null;
+    this.hilControl = null;
+    this.lastHardwareKey = null;
+    this.lastActuatorKey = null;
     this.logs = [{ t: 0, level: "info", text: `${this.mode} runtime initialised with seed ${this.seed}` }];
     this.startedEvents = new Set();
     this.endedEvents = new Set();
@@ -129,6 +142,13 @@ export class VidyutEngine {
     else this.stepGround(dt);
 
     this.applyUniversalFaults(dt);
+    if (this.mode === 'HIL' && this.hilControl?.controllerState) this.state.controller = this.hilControl.controllerState;
+    if (this.mode === 'HIL' && this.hilSession?.emergencyStopped) {
+      this.state.safeStop = true;
+      this.state.controller = 'HIL EMERGENCY STOP';
+      this.state.vx *= Math.max(0, 1 - dt * 8);
+      this.state.vy *= Math.max(0, 1 - dt * 8);
+    }
     this.updateCommon(dt);
     this.captureTelemetry();
     if (this.state.t >= this.scenario.duration) this.finish();
@@ -136,6 +156,11 @@ export class VidyutEngine {
   }
 
   applyHardwareSample(sample) {
+    const key = sample.sequence ?? sample.receivedAt ?? JSON.stringify(sample);
+    if (key === this.lastHardwareKey) return;
+    this.lastHardwareKey = key;
+    this.hardwareTelemetry.push({ t: round(this.state.t, 3), sample: JSON.parse(JSON.stringify(sample)) });
+    if (this.hardwareTelemetry.length > 600) this.hardwareTelemetry.shift();
     if (Number.isFinite(sample.heading)) this.state.heading = sample.heading;
     if (Number.isFinite(sample.battery)) this.state.battery = clamp(sample.battery, 0, 100);
     if (Number.isFinite(sample.attitude)) this.state.attitude = Math.abs(sample.attitude);
@@ -143,13 +168,33 @@ export class VidyutEngine {
   }
 
   applyActuatorCommand(command) {
+    const key = command.sequence ?? command.receivedAt ?? JSON.stringify(command);
+    if (key === this.lastActuatorKey) return;
+    this.lastActuatorKey = key;
     this.lastActuatorCommand = JSON.parse(JSON.stringify(command));
     const outputs = Array.isArray(command.outputs) ? command.outputs : [];
     if (outputs.length) {
+      const mean = outputs.reduce((sum, value) => sum + Number(value || 0), 0) / outputs.length;
+      const differential = outputs.length > 1 ? Number(outputs.at(-1) || 0) - Number(outputs[0] || 0) : 0;
       const spread = Math.max(...outputs) - Math.min(...outputs);
+      this.hilControl = { mean, differential, spread, controllerState: command.controllerState || 'HIL COMMAND' };
       this.state.attitude = clamp(this.state.attitude + spread * 8, 0, 60);
-      this.state.controller = command.controllerState || 'HIL COMMAND';
+      this.state.heading += differential * 2;
+      this.state.controller = this.hilControl.controllerState;
     }
+    this.actuatorCommands.push({ t: round(this.state.t, 3), command: this.lastActuatorCommand });
+    if (this.actuatorCommands.length > 600) this.actuatorCommands.shift();
+  }
+
+  recordHilSession(session) {
+    if (this.mode !== 'HIL' || !session) return;
+    this.hilSession = JSON.parse(JSON.stringify(session));
+  }
+
+  controlAuthority() {
+    if (this.mode !== 'HIL') return 1;
+    if (!this.hilControl) return 0;
+    return clamp(Math.abs(this.hilControl.mean) * 2, 0, 1.2);
   }
 
   vectorToTarget(useObserved = true) {
@@ -176,7 +221,7 @@ export class VidyutEngine {
     this.state.observedY = this.state.y - bias * 0.64;
     this.state.link = clamp(100 - linkLoss * 100, 0, 100);
     const nav = this.vectorToTarget(true);
-    const authority = clamp((1 - motor * 0.66 - power * 0.22) * aerodynamicAuthority, 0.06, 1.1);
+    const authority = clamp((1 - motor * 0.66 - power * 0.22) * aerodynamicAuthority * this.controlAuthority(), 0.02, 1.1);
     let commandedSpeed = 5.4 * authority;
     if (linkLoss > 0.4) {
       commandedSpeed = 0.8;
@@ -220,7 +265,7 @@ export class VidyutEngine {
     const gravityRatio = clamp(Number(this.environment.gravity || 9.80665) / 9.80665, .08, 2.5);
     const tractionAuthority = clamp(declaredFriction / .65 * Math.sqrt(gravityRatio), .12, 1.25);
     const safeStop = vision > 0.72 || linkLoss > 0.7;
-    const speed = safeStop ? 0 : 4.5 * tractionAuthority * (1 - slip * 0.58) * (1 - power * 0.25);
+    const speed = safeStop ? 0 : 4.5 * tractionAuthority * (1 - slip * 0.58) * (1 - power * 0.25) * this.controlAuthority();
     if (safeStop) {
       this.state.controller = "SAFE STOP";
       this.state.safeStop = true;
@@ -253,7 +298,7 @@ export class VidyutEngine {
     this.state.jointLoad = clamp((28 + joint * 78 + power * 18) * gravityRatio, 0, 120);
     const safeStop = this.state.stability < 38 || this.state.jointLoad > 91 || vision > 0.82;
     const nav = this.vectorToTarget(false);
-    const speed = safeStop ? 0 : 2.75 * clamp(1 / Math.sqrt(gravityRatio), .55, 1.4) * (1 - power * 0.28) * (1 - joint * 0.48);
+    const speed = safeStop ? 0 : 2.75 * clamp(1 / Math.sqrt(gravityRatio), .55, 1.4) * (1 - power * 0.28) * (1 - joint * 0.48) * this.controlAuthority();
     if (safeStop) {
       this.state.controller = "BALANCE HOLD";
       this.state.safeStop = true;
@@ -282,7 +327,7 @@ export class VidyutEngine {
     const pressure = this.severity('pressure_altitude');
     const radiationNoise = Math.max(this.severity('emi'), this.severity('sensor_dropout'));
     const nav = this.vectorToTarget(false);
-    const authority = clamp(1 - wheelLoss * .72 - power * .24, .08, 1);
+    const authority = clamp((1 - wheelLoss * .72 - power * .24) * this.controlAuthority(), .02, 1);
     const speed = 2.4 * authority;
     this.state.vx += (nav.nx * speed - this.state.vx) * .8 * dt;
     this.state.vy += (nav.ny * speed - this.state.vy) * .8 * dt;
@@ -378,6 +423,12 @@ export class VidyutEngine {
       t: round(this.state.t, 2),
       x: round(this.state.x),
       y: round(this.state.y),
+      observedX: round(this.state.observedX),
+      observedY: round(this.state.observedY),
+      vx: round(this.state.vx),
+      vy: round(this.state.vy),
+      altitude: round(this.state.altitude),
+      heading: round(this.state.heading),
       targetDistance: round(targetDistance),
       stability: round(this.state.stability),
       battery: round(this.state.battery),
@@ -389,6 +440,8 @@ export class VidyutEngine {
       latencyMs: this.state.latencyMs,
       computeLoad: this.state.computeLoad,
       packetDelivery: this.state.packetDelivery,
+      actuatorSequence: this.lastActuatorCommand?.sequence ?? null,
+      actuatorOutputs: Array.isArray(this.lastActuatorCommand?.outputs) ? [...this.lastActuatorCommand.outputs] : [],
       faults: this.activeFaults().map((event) => event.fault)
     });
     if (this.telemetry.length > 600) this.telemetry.shift();
@@ -398,29 +451,55 @@ export class VidyutEngine {
     const distance = Math.hypot(this.profile.target.x - this.state.x, this.profile.target.y - this.state.y);
     this.state.completed = true;
     this.state.phase = "COMPLETE";
-    const failed = this.evaluateTestCases().filter((test) => test.status === 'FAIL').length;
-    this.log(failed ? 'fault' : 'success', failed ? `${failed} test case(s) need engineering review; evidence bundle sealed` : 'All executed test cases met their configured assertions; evidence bundle sealed');
+    const evaluated = this.evaluateTestCases();
+    const failed = evaluated.filter((test) => test.status === 'FAIL').length;
+    const integrity = this.runIntegrity();
+    this.log(!integrity.valid || failed ? 'fault' : 'success', !integrity.valid ? `Run integrity invalid: ${integrity.reasons.join(' ')}` : failed ? `${failed} test case(s) need engineering review; evidence bundle sealed` : 'All executed test cases met their configured assertions; evidence bundle sealed');
     this.result = this.buildReport();
+  }
+
+  runIntegrity() {
+    if (this.mode !== 'HIL') return { valid: true, mode: 'SIL', reasons: [], warnings: [] };
+    const reasons = [];
+    const warnings = [];
+    if (!this.hilSession) reasons.push('No HIL session metadata was captured.');
+    else {
+      if (!this.hilSession.connected) reasons.push('The controller was disconnected before the run completed.');
+      if (!this.hilSession.synthetic && !this.hilSession.handshake?.acknowledged) reasons.push('The controller handshake was not verified.');
+      if ((this.hilSession.integrity?.watchdogTrips || 0) > 0) reasons.push('The controller watchdog tripped during execution.');
+      if (this.hilSession.emergencyStopped && (this.hilSession.integrity?.watchdogTrips || 0) === 0) warnings.push('The operator emergency stop was latched.');
+      for (const [field, label] of [['malformed', 'malformed frames'], ['rejected', 'rejected frames'], ['saturated', 'clamped output frames'], ['droppedSequences', 'dropped sequences'], ['outOfOrder', 'out-of-order sequences']]) {
+        const count = this.hilSession.integrity?.[field] || 0;
+        if (count) warnings.push(`${count} ${label}`);
+      }
+      if (this.hilSession.synthetic) warnings.push('Synthetic browser controller was used; no physical controller timing was validated.');
+    }
+    return { valid: reasons.length === 0, mode: this.hilSession?.synthetic ? 'SYNTHETIC_HIL' : 'HIL', reasons, warnings, session: this.hilSession };
   }
 
   evaluateTestCases() {
     const selected = this.scenario.selectedTestIds?.length ? this.scenario.selectedTestIds : [...new Set(this.scenario.events.map((event) => event.testId).filter(Boolean))];
     return selected.map((testId) => {
-      const definition = TEST_LIBRARY.find((test) => test.id === testId);
+      const definition = TEST_LIBRARY.find((test) => test.id === testId) || (this.scenario.testDefinitions || []).find((test) => test.id === testId);
       if (!definition) return { id: testId, name: testId, status: 'NOT_EVALUATED', assertion: 'No test definition found', evidence: 'Scenario referenced an unknown test ID.' };
       const events = this.scenario.events.filter((event) => event.testId === testId || event.fault === definition.fault);
       if (!this.state.completed) return { id: testId, name: definition.name, category: definition.category, status: 'NOT_RUN', assertion: definition.assertion, evidence: 'The configured run has not completed.' };
       if (!events.length) return { id: testId, name: definition.name, status: 'NOT_RUN', assertion: definition.assertion, evidence: 'No executable event was scheduled for this machine family.' };
+      const integrity = this.runIntegrity();
+      if (!integrity.valid) return { id: testId, name: definition.name, category: definition.category, status: 'NOT_EVALUATED', assertion: definition.assertion, evidence: `Run integrity was invalid: ${integrity.reasons.join(' ')}`, eventCount: events.length };
       let passed = this.minSafety > 12 && !this.state.collision;
-      if (definition.fault === 'gnss_drift') passed = this.maxError < 22;
-      if (definition.fault === 'wind_gust' || definition.fault === 'pressure_altitude') passed = this.state.attitude < 38;
-      if (definition.fault === 'camera_occlusion' || definition.fault === 'low_visibility') passed = this.state.safeStop || this.state.perception > 18;
-      if (definition.fault === 'link_loss' || definition.fault === 'obstacle_injection' || definition.fault === 'geofence_breach') passed = this.state.safeStop || this.logs.some((entry) => entry.level === 'action' && /hold|safe mode|controlled stop/i.test(entry.text));
-      if (definition.fault === 'battery_sag' || definition.fault === 'power_brownout' || definition.fault === 'temperature_extreme') passed = this.state.battery > 12;
-      if (definition.fault === 'latency_jitter') passed = this.state.latencyMs < 190;
-      if (definition.fault === 'packet_loss') passed = this.state.packetDelivery > 12;
-      if (definition.fault === 'cpu_overload' || definition.fault === 'memory_pressure') passed = this.state.computeLoad < 99;
-      return { id: testId, name: definition.name, category: definition.category, status: passed ? 'PASS' : 'FAIL', assertion: definition.assertion, evidence: `Minimum safety ${Math.max(0, this.minSafety).toFixed(1)}%; peak estimate error ${this.maxError.toFixed(1)} m; final battery ${this.state.battery.toFixed(1)}%.`, eventCount: events.length };
+      let threshold = { metric: 'minimumSafetyMargin', operator: '>', value: 12, unit: '%' };
+      let measured = { value: round(Math.max(0, this.minSafety), 1), unit: '%' };
+      if (definition.fault === 'gnss_drift') { passed = this.maxError < 22; threshold = { metric: 'peakEstimateError', operator: '<', value: 22, unit: 'm' }; measured = { value: round(this.maxError, 1), unit: 'm' }; }
+      if (definition.fault === 'wind_gust' || definition.fault === 'pressure_altitude') { passed = this.state.attitude < 38; threshold = { metric: 'finalAttitude', operator: '<', value: 38, unit: 'deg' }; measured = { value: round(this.state.attitude, 1), unit: 'deg' }; }
+      if (definition.fault === 'camera_occlusion' || definition.fault === 'low_visibility') { passed = this.state.safeStop || this.state.perception > 18; threshold = { metric: 'perceptionOrSafeStop', operator: '>', value: 18, unit: '%' }; measured = { value: round(this.state.perception, 1), unit: '%', safeStop: this.state.safeStop }; }
+      if (definition.fault === 'link_loss' || definition.fault === 'obstacle_injection' || definition.fault === 'geofence_breach') { passed = this.state.safeStop || this.logs.some((entry) => entry.level === 'action' && /hold|safe mode|controlled stop/i.test(entry.text)); threshold = { metric: 'safeFallbackObserved', operator: '==', value: true, unit: 'boolean' }; measured = { value: passed, unit: 'boolean' }; }
+      if (definition.fault === 'battery_sag' || definition.fault === 'power_brownout' || definition.fault === 'temperature_extreme') { passed = this.state.battery > 12; threshold = { metric: 'finalBattery', operator: '>', value: 12, unit: '%' }; measured = { value: round(this.state.battery, 1), unit: '%' }; }
+      if (definition.fault === 'latency_jitter') { passed = this.state.latencyMs < 190; threshold = { metric: 'finalLatency', operator: '<', value: 190, unit: 'ms' }; measured = { value: this.state.latencyMs, unit: 'ms' }; }
+      if (definition.fault === 'packet_loss') { passed = this.state.packetDelivery > 12; threshold = { metric: 'packetDelivery', operator: '>', value: 12, unit: '%' }; measured = { value: this.state.packetDelivery, unit: '%' }; }
+      if (definition.fault === 'cpu_overload' || definition.fault === 'memory_pressure') { passed = this.state.computeLoad < 99; threshold = { metric: 'computeLoad', operator: '<', value: 99, unit: '%' }; measured = { value: this.state.computeLoad, unit: '%' }; }
+      const interval = { start: round(Math.min(...events.map((event) => event.start)), 2), end: round(Math.max(...events.map((event) => event.start + event.duration)), 2), unit: 's' };
+      return { id: testId, name: definition.name, category: definition.category, status: passed ? 'PASS' : 'FAIL', assertion: definition.assertion, threshold, measured, thresholdSource: 'VIDYUT prototype default; engineer approval required', supportingInterval: interval, evidence: `${threshold.metric} measured ${measured.value} ${measured.unit}; prototype threshold ${threshold.operator} ${threshold.value} ${threshold.unit}.`, eventCount: events.length };
     });
   }
 
@@ -433,6 +512,9 @@ export class VidyutEngine {
     if (findings.length === 0) findings.push({ severity: "info", title: "No safety assertion exceeded", evidence: "All monitored signals remained inside configured limits" });
     const testCases = this.evaluateTestCases();
     const failedCount = testCases.filter((test) => test.status === 'FAIL').length;
+    const unevaluatedCount = testCases.filter((test) => test.status === 'NOT_EVALUATED').length;
+    const integrity = this.runIntegrity();
+    if (integrity.warnings.length) findings.push({ severity: integrity.valid ? 'warning' : 'high', title: 'Execution integrity notes', evidence: integrity.warnings.join('; ') });
     return {
       schema: "vidyut.evidence.v2",
       generatedAt: new Date().toISOString(),
@@ -441,11 +523,13 @@ export class VidyutEngine {
       scenario: this.scenario,
       mode: this.mode,
       adapter: this.adapter,
+      simulator: this.simulator,
       environment: this.environment,
+      scenarioFingerprint: fingerprint(this.scenario),
       machineManifestFingerprint: this.manifest ? manifestFingerprint(this.manifest) : null,
       readiness: this.readiness,
       deterministicSeed: this.seed,
-      overallAssessment: !this.state.completed ? 'NOT_RUN' : failedCount ? 'COMPLETE_WITH_FINDINGS' : 'COMPLETE',
+      overallAssessment: !this.state.completed ? 'NOT_RUN' : !integrity.valid ? 'INVALID_RUN' : failedCount || unevaluatedCount ? 'COMPLETE_WITH_FINDINGS' : 'COMPLETE',
       note: 'VIDYUT reports each configured test case individually; this is not a certification or whole-machine safety verdict.',
       metrics: {
         finalDistance: round(distance, 1),
@@ -457,9 +541,13 @@ export class VidyutEngine {
       assertions: this.profile.passRules,
       testCases,
       findings,
+      integrity,
+      controller: { protocol: this.manifest?.interfaces?.[0]?.protocol || null, transport: this.manifest?.interfaces?.[0]?.transport || null, handshake: this.hilSession?.handshake || null, physicalActuatorsDisabled: this.manifest?.safety?.physicalActuatorsDisabled !== false },
+      controllerEvidence: { hardwareTelemetry: this.hardwareTelemetry, actuatorCommands: this.actuatorCommands },
       eventLog: this.logs,
       telemetry: this.telemetry,
-      replay: { profileId: this.profile.id, scenario: this.scenario, environment: this.environment, seed: this.seed, mode: this.mode }
+      explanations: [],
+      replay: { profileId: this.profile.id, manifest: this.manifest, scenario: this.scenario, environment: this.environment, seed: this.seed, mode: this.mode, simulator: this.simulator }
     };
   }
 

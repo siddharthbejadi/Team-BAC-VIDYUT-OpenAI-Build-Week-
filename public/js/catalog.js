@@ -67,7 +67,7 @@ export const ENVIRONMENTS = [
   { id: 'rainforest', name: 'Rainforest corridor', body: 'Earth', terrain: 'Canopy, humidity and uneven ground', gravity: 9.80665, airDensity: 1.16, temperature: 31, wind: 5, visibility: 46, latitude: -3.4653, longitude: -62.2159, elevation: 85, color: '#4ade80' },
   { id: 'lunar', name: 'Lunar south pole', body: 'Moon', terrain: 'Regolith, craters and hard shadows', gravity: 1.62, airDensity: 0, temperature: -90, wind: 0, visibility: 76, latitude: -89.5, longitude: 0, elevation: -2800, color: '#d1d5db' },
   { id: 'mars', name: 'Mars crater rim', body: 'Mars', terrain: 'Rock, regolith and dust', gravity: 3.721, airDensity: 0.02, temperature: -55, wind: 18, visibility: 61, latitude: -4.5, longitude: 137.4, elevation: -4500, color: '#fb923c' }
-];
+].map((environment) => ({ version: '2026.07-curated', confirmed: true, provenance: 'VIDYUT curated demonstration environment', ...environment }));
 
 export function testsForFamily(family) {
   const key = String(family || '').toLowerCase();

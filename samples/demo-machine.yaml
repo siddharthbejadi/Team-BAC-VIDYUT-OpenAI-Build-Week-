@@ -1,0 +1,47 @@
+schema: vidyut.machine.v2
+version: 2
+id: mountain-rescue-drone
+name: Mountain Rescue Drone
+family: aerial
+description: Demonstration YAML manifest for package import.
+physical:
+  totalMassKg: 2.3
+  centerOfMass: [0, 0, -0.04]
+  gravityEnabled: true
+  frictionCoefficient: 0.65
+  dragCoefficient: 0.9
+  confirmed: false
+components:
+  - id: battery
+    name: 4S LiPo battery
+    kind: power-source
+    confirmed: false
+    output: {voltage: 14.8, maxCurrentA: 60}
+    pins:
+      - {id: VBAT+, name: VBAT+, mode: power}
+      - {id: GND, name: GND, mode: ground}
+  - id: flight-controller
+    name: PX4-compatible flight controller
+    kind: controller
+    confirmed: false
+    input: {minVoltage: 4.75, maxVoltage: 5.25, currentA: 0.8}
+    pins:
+      - {id: 5V, name: 5V, mode: power}
+      - {id: GND, name: GND, mode: ground}
+      - {id: PWM1, name: PWM1, mode: pwm}
+connections: []
+interfaces:
+  - id: rescue-controller
+    transport: web-serial
+    baudRate: 115200
+    protocol: vidyut.hil.v1
+    benchSafe: true
+safety:
+  physicalActuatorsDisabled: true
+  emergencyStopRequired: true
+  watchdogMs: 750
+  benchChecklistConfirmed: false
+capabilities: [position, altitude, attitude, link, battery]
+faults: [gnss_drift, link_loss, wind_gust, battery_sag, motor_loss]
+assumptions:
+  - This package intentionally requires engineer confirmation and additional wiring before readiness passes.

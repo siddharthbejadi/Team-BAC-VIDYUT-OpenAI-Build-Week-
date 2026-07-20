@@ -146,6 +146,9 @@ td .remove-row { min-height: 29px; width: 29px; padding: 0; color: var(--red); }
 .environment-card small { color: var(--muted); font-size: 9px; line-height: 1.35; }
 .environment-editor { display: none; margin-top: 14px; border-top: 1px solid var(--line); padding-top: 14px; }
 .environment-editor.open { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.custom-test-editor { display: none; margin: 10px 0; padding: 12px; border: 1px solid var(--line); background: rgba(8,20,31,.72); }
+.custom-test-editor.open { display: block; }
+.custom-test-editor > label { display: block; margin: 8px 0; }
 .filter-row { display: flex; gap: 6px; margin-bottom: 11px; flex-wrap: wrap; }
 .filter-row button { background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 3px; min-height: 28px; padding: 0 9px; font-size: 9px; cursor: pointer; }
 .filter-row button.active { color: var(--teal); border-color: rgba(94,234,212,.4); background: rgba(94,234,212,.06); }
@@ -199,6 +202,8 @@ td .remove-row { min-height: 29px; width: 29px; padding: 0; color: var(--red); }
 .connector-card b { font-size: 10px; }
 .connector-card small { color: var(--muted); font-size: 8px; margin-top: 3px; }
 .hil-actions { display: flex; gap: 6px; margin-top: 8px; }
+.hil-safety-check { display: flex; gap: 8px; align-items: flex-start; margin-top: 8px; padding: 9px; border: 1px solid var(--line); background: rgba(8,20,31,.72); color: var(--muted); font-size: 8px; line-height: 1.45; }
+.hil-safety-check input { margin-top: 1px; accent-color: var(--teal); }
 .bench-safe { color: var(--green); font: 7px ui-monospace, monospace; display: block; margin-top: 7px; }
 .run-actions { display: grid; grid-template-columns: 1fr 40px; gap: 6px; margin-bottom: 7px; }
 .run-center { min-width: 0; padding: 12px; overflow-y: auto; }
@@ -246,7 +251,7 @@ dialog::backdrop { background: rgba(0,0,0,.72); backdrop-filter: blur(4px); }
 .dialog-header, .dialog-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--line); }.dialog-header h2 { margin: 5px 0 0; }.dialog-actions { border-top: 1px solid var(--line); border-bottom: 0; justify-content: flex-end; }
 #report-content { padding: 20px; }
 .report-hero { display: grid; grid-template-columns: 165px 1fr; gap: 18px; align-items: center; border: 1px solid var(--line); padding: 16px; }
-.assessment { color: var(--green); border: 1px solid rgba(74,222,128,.3); background: rgba(74,222,128,.06); padding: 14px; text-align: center; font: 10px ui-monospace, monospace; }.assessment.findings { color: var(--amber); border-color: rgba(247,185,85,.35); background: rgba(247,185,85,.06); }
+.assessment { color: var(--green); border: 1px solid rgba(74,222,128,.3); background: rgba(74,222,128,.06); padding: 14px; text-align: center; font: 10px ui-monospace, monospace; }.assessment.findings { color: var(--amber); border-color: rgba(247,185,85,.35); background: rgba(247,185,85,.06); }.assessment.invalid { color: var(--red); border-color: var(--red); background: rgba(255,122,138,.08); }
 .report-hero h3 { margin: 0 0 5px; }.report-hero p { color: var(--muted); margin: 0 0 8px; }.report-id { color: var(--dim); font: 8px ui-monospace, monospace; }
 .report-metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }.report-metrics article { border: 1px solid var(--line); padding: 11px; }.report-metrics span, .report-metrics b { display: block; }.report-metrics span { color: var(--muted); font-size: 8px; }.report-metrics b { margin-top: 5px; }
 .test-result { display: grid; grid-template-columns: 70px 1fr; gap: 11px; border-bottom: 1px solid var(--line); padding: 11px 0; }.test-status { border: 1px solid var(--line-2); padding: 6px; height: fit-content; text-align: center; color: var(--green); font: 8px ui-monospace, monospace; }.test-status.fail { color: var(--red); border-color: rgba(255,113,134,.4); }.test-status.not-run { color: var(--muted); }.test-result b, .test-result small { display: block; }.test-result small { color: var(--muted); margin-top: 4px; line-height: 1.4; }

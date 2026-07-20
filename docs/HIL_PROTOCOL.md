@@ -8,6 +8,8 @@ The browser bridge uses newline-delimited JSON over Web Serial at 115200 baud. I
 - VIDYUT clamps returned actuator values to `[-1, 1]` and uses them only inside the virtual executor.
 - The bridge overwrites a controller's returned `armed` value to `false` in its evidence record.
 - Emergency stop pauses sensor injection and sends an `emergency_stop` message.
+- The run cannot begin until a compatible `hello_ack` is received. A 750 ms command watchdog latches emergency stop if the active virtual plant stops receiving actuator commands.
+- Malformed, rejected, saturated, dropped and out-of-order frames are counted in the evidence bundle.
 - Do not connect motors, propellers, high-current drivers, or loaded servos during the prototype HIL demo.
 - A production bench needs electrical isolation, a watchdog, hard real-time synchronization, and a hardware emergency stop. This browser bridge is not a certified safety device.
 
@@ -19,10 +21,10 @@ VIDYUT sends:
 {"type":"hello","protocol":"vidyut.hil.v1","benchSafe":true,"accepts":["sensor_frame","fault_state"],"produces":["actuator_command","telemetry"]}
 ```
 
-The controller may reply:
+The controller must reply before VIDYUT will inject sensor frames:
 
 ```json
-{"type":"hello_ack","protocol":"vidyut.hil.v1","controller":"STM32-F407 bench controller","firmware":"0.3.0"}
+{"type":"hello_ack","protocol":"vidyut.hil.v1","controller":"STM32-F407 bench controller","firmware":"0.3.0","benchSafe":true,"physicalOutputsAllowed":false}
 ```
 
 ## Sensor frame: VIDYUT to controller
@@ -76,4 +78,10 @@ or:
 {"type":"emergency_stop","protocol":"vidyut.hil.v1","physicalOutputsAllowed":false,"reason":"operator"}
 ```
 
-The controller should acknowledge the signal check with telemetry and must immediately return zero/neutral simulated actuator commands after emergency stop.
+After the operator has verified the bench, VIDYUT may send:
+
+```json
+{"type":"clear_emergency_stop","protocol":"vidyut.hil.v1","physicalOutputsAllowed":false}
+```
+
+The controller should acknowledge the signal check with telemetry and must immediately return zero/neutral simulated actuator commands after emergency stop. It must never interpret these normalized commands as permission to energize physical outputs.

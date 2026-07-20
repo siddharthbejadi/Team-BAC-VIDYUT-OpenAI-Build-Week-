@@ -14,7 +14,7 @@ await mkdir(join(output, 'server'), { recursive: true });
 await cp(join(repository, '.openai'), join(output, '.openai'), { recursive: true });
 await writeFile(join(output, 'build.json'), JSON.stringify({ application: 'BAC VIDYUT', schema: 'vidyut.machine.v2', builtAt: new Date().toISOString() }, null, 2));
 
-const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.xml': 'application/xml; charset=utf-8', '.urdf': 'application/xml; charset=utf-8', '.ino': 'text/plain; charset=utf-8' };
+const mime = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json; charset=utf-8', '.yaml': 'application/yaml; charset=utf-8', '.yml': 'application/yaml; charset=utf-8', '.xml': 'application/xml; charset=utf-8', '.urdf': 'application/xml; charset=utf-8', '.xacro': 'application/xml; charset=utf-8', '.gltf': 'model/gltf+json', '.glb': 'model/gltf-binary', '.zip': 'application/zip', '.ino': 'text/plain; charset=utf-8' };
 const assetMap = {};
 async function collect(directory) {
   for (const entry of await readdir(directory, { withFileTypes: true })) {
