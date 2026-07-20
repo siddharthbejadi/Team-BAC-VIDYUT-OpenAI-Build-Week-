@@ -10,5 +10,8 @@ await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 await cp(join(repository, 'public'), output, { recursive: true });
 await cp(join(repository, 'samples'), join(output, 'samples'), { recursive: true });
+await mkdir(join(output, 'server'), { recursive: true });
+await cp(join(repository, 'sites', 'server-index.js'), join(output, 'server', 'index.js'));
+await cp(join(repository, '.openai'), join(output, '.openai'), { recursive: true });
 await writeFile(join(output, 'build.json'), JSON.stringify({ application: 'BAC VIDYUT', schema: 'vidyut.machine.v2', builtAt: new Date().toISOString() }, null, 2));
 console.log(`Built static site at ${output}`);
