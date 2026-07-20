@@ -28,7 +28,7 @@ Last verified: 20 July 2026. This file is the operational source of truth for wh
 |---|---|
 | Real controller HIL | The protocol is implemented and tested with a synthetic bridge, but must be tested with the exact controller/firmware selected by the user. |
 | Electrical correctness of a real machine | The readiness engine checks declared values; it cannot prove an undeclared wire, damaged board, grounding problem, transient, EMI issue, or actual current waveform. |
-| AI production path | Request shape and deterministic fallback are implemented. A server-side `OPENAI_API_KEY` and a runtime capable of server API calls are needed for a live production trace. |
+| AI production path | The Node server and Sites worker both implement constrained GPT-5.6 Responses API routes. A server-side `OPENAI_API_KEY` is still needed for a live production trace; the deterministic browser planner remains available without it. |
 | Imported engineering values | Parsed CAD/robot-description values still require confirmation against the actual assembly, coordinate conventions, materials, payload, and measured centre of mass. |
 
 ## Not implemented as engineering-grade production claims
