@@ -55,7 +55,7 @@ const dom = {
 };
 
 Object.assign(dom, {
-  gripperTwin: $('#gripper-twin'), gripperAngle: $('#gripper-angle'), gripperStatus: $('#gripper-status'), gripperConnectBtn: $('#gripper-connect-btn'), gripperSafetyConfirm: $('#gripper-safety-confirm'), gripperUnsafeBtn: $('#gripper-unsafe-btn'), gripperStopBtn: $('#gripper-stop-btn'), gripperLog: $('#gripper-log')
+  gripperAdapterPanel: $('#gripper-adapter-panel'), gripperTwin: $('#gripper-twin'), gripperAngle: $('#gripper-angle'), gripperStatus: $('#gripper-status'), gripperConnectBtn: $('#gripper-connect-btn'), gripperSafetyConfirm: $('#gripper-safety-confirm'), gripperUnsafeBtn: $('#gripper-unsafe-btn'), gripperStopBtn: $('#gripper-stop-btn'), gripperLog: $('#gripper-log')
 });
 
 const provingGround = new ProvingGround3D(dom.sceneCanvas);
@@ -135,6 +135,7 @@ function newMachine() {
 function renderMachine() {
   syncProfile();
   dom.presetList.innerHTML = Object.values(MACHINE_PROFILES).map((item) => `<button class="preset-card ${item.id === state.profileId ? 'active' : ''}" data-preset="${item.id}" style="--preset-accent:${item.accent}"><i></i><span>${escapeHtml(item.family.toUpperCase())}</span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.format)}</small></button>`).join('');
+  dom.gripperAdapterPanel.hidden = state.profileId !== 'humanoid';
   $$('[data-manifest]').forEach((input) => {
     const value = getPath(state.manifest, input.dataset.manifest);
     input.value = Array.isArray(value) ? value.join(', ') : value ?? '';

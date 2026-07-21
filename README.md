@@ -2,7 +2,7 @@
 
 ## One-hour live gripper proof
 
-Flash `samples/vidyut-gripper-g474re.cpp` to the NUCLEO-G474RE, connect the PCA9685 gripper servo on channel 0, then open VIDYUT in desktop Chrome or Edge. In **Machine setup → Gripper hardware proof**, confirm the physical safety checklist and connect the controller at 115200 baud. Valid ±8° commands move the servo and update the virtual gripper only after an acknowledgement; the +30° safety command is rejected without motion.
+Flash `samples/vidyut-gripper-g474re.cpp` to the NUCLEO-G474RE, connect the PCA9685 gripper servo on channel 0, then open VIDYUT in desktop Chrome or Edge. In **Machine setup**, select the **Humanoid working adapter** to reveal its embedded live hardware controls, confirm the safety checklist, and connect at 115200 baud. Valid ±8° commands move the servo and update the virtual gripper only after an acknowledgement; the +30° safety command is rejected without motion.
 
 VIDYUT is a test workflow for autonomous machines. An engineering team imports a mechanical model, declares electronics and controller interfaces, passes pre-run readiness checks, configures environments and failures, then runs repeatable software-in-the-loop (SIL) or bench-safe hardware-in-the-loop (HIL) tests before physical trials.
 
