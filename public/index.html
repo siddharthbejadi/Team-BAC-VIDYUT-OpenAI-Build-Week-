@@ -12,7 +12,7 @@
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="#" aria-label="BAC VIDYUT home"><span class="brand-mark"><i></i><i></i><i></i></span><span><b>BAC</b><strong>VIDYUT</strong></span></a>
+    <a class="brand" href="#home" id="home-link" aria-label="BAC VIDYUT home"><span class="brand-mark"><i></i><i></i><i></i></span><span><b>BAC</b><strong>VIDYUT</strong></span></a>
     <div class="project-name"><span>PROJECT</span><b id="header-project-name">VX-4 Resilience Test</b></div>
     <nav class="workflow-nav" aria-label="Project workflow">
       <button class="active" data-page="machine"><span>1</span><b>Machine setup</b><small>Geometry + electronics</small></button>
@@ -25,7 +25,38 @@
   </header>
 
   <main>
-    <section class="page active" id="page-machine" data-page-panel="machine">
+    <section class="page home-page active" id="page-home" data-page-panel="home">
+      <div class="home-hero">
+        <div class="home-copy">
+          <div class="home-kicker"><span>OPENAI BUILD WEEK</span><i></i><b>TEAM VIDYUT</b></div>
+          <h1>Find integration failures <em>before</em> the physical trial.</h1>
+          <p class="home-lede">A virtual proving workflow for autonomous machines—combining geometry, electronics, repeatable failure scenarios and engineering evidence.</p>
+          <div class="home-actions"><button class="home-cta" id="home-start-btn">Start the live demo <span>↗</span></button><button class="home-text-link" id="home-problem-btn">See the problem ↓</button></div>
+          <div class="home-team"><span>BUILT BY</span><b>Siddharth</b><b>Reshma</b><b>Abhinay</b></div>
+        </div>
+        <div class="home-visual" aria-label="VIDYUT 19-DOF humanoid prototype"><img src="/vidyut-humanoid.png" alt="Physical 19-DOF humanoid robot used by the VIDYUT team"><div class="home-scan"></div><span class="visual-label top">PHYSICAL MACHINE / 19 DOF</span><span class="visual-label bottom">GEOMETRY × ELECTRONICS × CONTROL</span></div>
+      </div>
+
+      <section class="home-problem" id="home-problem">
+        <span class="home-section-number">01 / THE PROBLEM</span>
+        <h2>CAD describes the body.<br>It does not prove the machine.</h2>
+        <p>Critical failures emerge where geometry, electronics and controller behaviour meet. Finding them during physical integration costs time, hardware and sometimes safety.</p>
+        <div class="problem-lines"><article><span>01</span><b>Integration faults appear on the physical bench.</b></article><article><span>02</span><b>Failure testing is costly, risky and difficult to repeat.</b></article><article><span>03</span><b>Evidence is fragmented across disconnected tools.</b></article></div>
+      </section>
+
+      <section class="home-users">
+        <div class="users-heading"><span class="home-section-number">02 / INTENDED USERS</span><h2>For teams validating autonomous machines.</h2></div>
+        <div class="user-columns"><article><span>BUILDERS</span><h3>Robotics & embedded teams</h3><p>Developing drones, rovers, humanoids and physical-AI systems.</p></article><article><span>VALIDATORS</span><h3>Test engineers</h3><p>Responsible for repeatable failures, thresholds and reviewable evidence.</p></article><article><span>EXPLORERS</span><h3>Smaller autonomy & space teams</h3><p>Learning before costly trials without an enterprise-scale proving ground.</p></article></div>
+      </section>
+
+      <section class="home-workflow">
+        <div><span class="home-section-number">03 / THE WORKFLOW</span><h2>One continuous engineering loop.</h2></div>
+        <ol><li><span>01</span><b>Describe</b><small>Geometry + electronics</small></li><li><span>02</span><b>Challenge</b><small>Environment + failures</small></li><li><span>03</span><b>Execute</b><small>SIL + controller bridge</small></li><li><span>04</span><b>Prove</b><small>Telemetry + evidence</small></li></ol>
+        <button class="home-cta" id="home-start-btn-bottom">Enter VIDYUT <span>↗</span></button>
+      </section>
+    </section>
+
+    <section class="page" id="page-machine" data-page-panel="machine">
       <div class="page-heading">
         <div><span class="eyebrow">STEP 01 / MACHINE SETUP</span><h1>Give the model a body, electronics, and interfaces.</h1><p>Geometry and wiring are separate sources. VIDYUT combines them into one reviewable machine manifest before any test is allowed to run.</p></div>
         <div class="heading-actions"><button class="button ghost" id="new-machine-btn">New custom machine</button><button class="button ghost" id="download-manifest-btn">Download manifest</button><button class="button primary" id="machine-next-btn">Validate & continue</button></div>

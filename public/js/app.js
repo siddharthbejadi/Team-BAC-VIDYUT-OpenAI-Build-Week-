@@ -17,7 +17,7 @@ const hil = new HilBridge();
 const gripper = new GripperBridge();
 
 const state = {
-  page: 'machine',
+  page: 'home',
   profiles: clone(MACHINE_PROFILES),
   profileId: 'drone',
   manifest: clone(MACHINE_PROFILES.drone.manifest),
@@ -418,7 +418,7 @@ async function checkAiStatus() {
 }
 
 function goPage(page, options = {}) {
-  if (page !== 'machine' && !state.validation.ready) {
+  if (!['home', 'machine'].includes(page) && !state.validation.ready) {
     toast(`${state.validation.summary.blockers} readiness blocker${state.validation.summary.blockers === 1 ? '' : 's'} must be resolved first.`);
     state.page = 'machine';
   } else if (page === 'run' && state.scenario.events.length === 0) {
@@ -428,8 +428,8 @@ function goPage(page, options = {}) {
   $$('[data-page-panel]').forEach((panel) => panel.classList.toggle('active', panel.dataset.pagePanel === state.page));
   $$('.workflow-nav button').forEach((button) => {
     button.classList.toggle('active', button.dataset.page === state.page);
-    const order = { machine: 0, scenario: 1, run: 2 };
-    button.classList.toggle('complete', order[button.dataset.page] < order[state.page]);
+    const order = { home: -1, machine: 0, scenario: 1, run: 2 };
+    button.classList.toggle('complete', state.page !== 'home' && order[button.dataset.page] < order[state.page]);
   });
   if (state.page === 'scenario') renderScenario();
   if (state.page === 'run') { if (!options.keepEngine) resetEngine(); renderRunConfiguration(); }
@@ -746,6 +746,10 @@ function animationLoop(now) {
 }
 
 function bindEvents() {
+  $('#home-link').addEventListener('click', (event) => { event.preventDefault(); goPage('home'); });
+  $('#home-start-btn').addEventListener('click', () => goPage('machine'));
+  $('#home-start-btn-bottom').addEventListener('click', () => goPage('machine'));
+  $('#home-problem-btn').addEventListener('click', () => $('#home-problem').scrollIntoView({ behavior: 'smooth' }));
   $('.workflow-nav').addEventListener('click', (event) => { const button = event.target.closest('[data-page]'); if (button) goPage(button.dataset.page); });
   $$('[data-go-page]').forEach((button) => button.addEventListener('click', () => goPage(button.dataset.goPage)));
   dom.presetList.addEventListener('click', (event) => { const button = event.target.closest('[data-preset]'); if (button) selectPreset(button.dataset.preset); });
