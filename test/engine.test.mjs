@@ -6,6 +6,8 @@ import { MACHINE_PROFILES, PRESET_SCENARIOS, profileFromManifest, validateMachin
 import { VidyutEngine, validateScenario } from '../public/js/engine.js';
 import { HilBridge } from '../public/js/hil.js';
 import { createStarterManifest, importMachineFiles, manifestFingerprint, normalizeMachineManifest, parseGltf, parseKicadNetlist, parseStep, parseUrdf, parseYamlManifest, parseZipArchive, validateMachineManifest } from '../public/js/manifest.js';
+import { runCoverageSweep } from '../public/js/coverage.js';
+import { buildBackendPackage } from '../public/js/adapters.js';
 
 function crc32(bytes) {
   let crc = 0xffffffff;
@@ -67,6 +69,29 @@ test('the simulation is deterministic for the same seed and inputs', () => {
   assert.deepEqual(first.result.metrics, second.result.metrics);
   assert.deepEqual(first.telemetry, second.telemetry);
   assert.deepEqual(first.result.testCases, second.result.testCases);
+});
+
+test('coverage sweep executes wind, payload, battery, and failure-timing combinations', () => {
+  const profile = MACHINE_PROFILES.drone;
+  const result = runCoverageSweep({ profile, scenario: PRESET_SCENARIOS.drone[0], environment: ENVIRONMENTS[0], manifest: profile.manifest, readiness: validateMachineManifest(profile.manifest), baseSeed: 90 });
+  assert.equal(result.schema, 'vidyut.coverage.v1');
+  assert.equal(result.summary.total, 24);
+  assert.equal(result.runs.length, 24);
+  assert.deepEqual(result.axes.payloadKg, [0, .75]);
+  assert.deepEqual(result.axes.initialBatteryPercent, [100, 55]);
+  assert.ok(result.runs.every((run) => ['PASS', 'FAIL'].includes(run.status)));
+  assert.ok(result.runs.every((run) => run.fingerprints.machine.startsWith('fnv1a-')));
+});
+
+test('backend package preserves reproducibility and open adapter contracts', () => {
+  const profile = MACHINE_PROFILES.drone;
+  const result = buildBackendPackage({ backendId: 'px4-gazebo', manifest: profile.manifest, scenario: PRESET_SCENARIOS.drone[0], environment: ENVIRONMENTS[0], seed: 721 });
+  assert.equal(result.schema, 'vidyut.backend-package.v1');
+  assert.equal(result.backend.adapter, 'px4-mavlink-gazebo');
+  assert.equal(result.reproducibility.seed, 721);
+  assert.match(result.fmi3Mapping.standard, /FMI 3\.0/);
+  assert.match(result.openScenarioMapping.standardConcept, /OpenSCENARIO/);
+  assert.equal(result.evidenceContract.requirePerCaseResults, true);
 });
 
 test('faults are injected and recovery is recorded', () => {

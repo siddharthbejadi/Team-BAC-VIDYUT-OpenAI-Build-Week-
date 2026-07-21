@@ -9,12 +9,16 @@ const root = fileURLToPath(new URL('./public/', import.meta.url));
 const port = Number(process.env.PORT) || 4173;
 const host = process.env.HOST || '0.0.0.0';
 const model = process.env.OPENAI_MODEL || 'gpt-5.6';
+const px4BridgeUrl = String(process.env.PX4_BRIDGE_URL || '').replace(/\/$/, '');
+const fmiBridgeUrl = String(process.env.FMI_BRIDGE_URL || '').replace(/\/$/, '');
 
 const mime = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
+  '.gltf': 'model/gltf+json',
+  '.glb': 'model/gltf-binary',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
   '.ico': 'image/x-icon'
@@ -258,7 +262,34 @@ async function openAiComponent(query) {
   } finally { clearTimeout(timeout); }
 }
 
+async function probeBridge(url, label) {
+  if (!url) return { available: false, connected: false, detail: `${label} URL is not configured on the VIDYUT server.` };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 1200);
+  try {
+    const response = await fetch(`${url}/health`, { signal: controller.signal, headers: { accept: 'application/json' } });
+    const health = response.ok ? await response.json() : {};
+    const connected = Boolean(response.ok && health.ready);
+    return {
+      available: Boolean(connected && health.vidyutExecutionReady),
+      connected,
+      detail: connected ? health.vidyutExecutionReady ? `${label} bridge is ready.` : `${label} bridge detected; full VIDYUT execution streaming is not enabled by that bridge.` : `${label} bridge responded but is not connected to its runtime.`,
+      health
+    };
+  } catch (error) {
+    return { available: false, connected: false, detail: `${label} bridge is unreachable: ${error.name === 'AbortError' ? 'health check timed out' : error.message}` };
+  } finally { clearTimeout(timer); }
+}
+
 async function handleApi(request, response, url) {
+  if (url.pathname === '/api/backends/status' && request.method === 'GET') {
+    const [px4, fmi] = await Promise.all([probeBridge(px4BridgeUrl, 'PX4/Gazebo'), probeBridge(fmiBridgeUrl, 'FMI')]);
+    return json(response, 200, {
+      vidyut: { available: true, connected: true, detail: 'Browser deterministic preview ready.' },
+      'px4-gazebo': px4,
+      fmi
+    });
+  }
   if (url.pathname === '/api/ai/status' && request.method === 'GET') {
     return json(response, 200, { configured: Boolean(process.env.OPENAI_API_KEY), model, fallback: 'deterministic-local-planner' });
   }

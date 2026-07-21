@@ -46,6 +46,7 @@ export class VidyutEngine {
     this.environment = JSON.parse(JSON.stringify(options.environment || ENVIRONMENTS.find((item) => item.id === scenario.environmentId) || ENVIRONMENTS[0]));
     this.manifest = options.manifest || profile.manifest || null;
     this.readiness = options.readiness || null;
+    this.variant = JSON.parse(JSON.stringify(options.variant || scenario.variant || {}));
     this.adapter = options.adapter || (this.mode === 'HIL' ? 'web-serial' : 'deterministic-sil');
     this.lastActuatorCommand = null;
     this.simulator = { id: 'vidyut-fast-demo', version: '0.3.0', timeStepPolicy: 'bounded-variable-dt', fidelity: 'prototype-deterministic' };
@@ -64,7 +65,7 @@ export class VidyutEngine {
       vy: 0,
       altitude: initial.altitude || 0,
       heading: initial.heading || 0,
-      battery: initial.battery || 100,
+      battery: Number.isFinite(Number(this.variant.initialBatteryPercent)) ? clamp(Number(this.variant.initialBatteryPercent), 0, 100) : initial.battery || 100,
       perception: 100,
       link: 100,
       attitude: 0,
@@ -214,7 +215,10 @@ export class VidyutEngine {
     const power = Math.max(this.severity("battery_sag"), this.severity('power_brownout') * .8, this.severity('temperature_extreme') * .35);
     const gravityRatio = clamp(Number(this.environment.gravity || 9.80665) / 9.80665, .08, 2.5);
     const densityRatio = clamp(Number(this.environment.airDensity ?? 1.225) / 1.225, 0, 1.6);
-    const aerodynamicAuthority = clamp(densityRatio / gravityRatio, .06, 1.25);
+    const referenceMass = Number(this.profile.manifest?.physical?.totalMassKg || this.manifest?.physical?.totalMassKg || 1);
+    const configuredMass = Number(this.manifest?.physical?.totalMassKg || referenceMass) + Math.max(0, Number(this.variant.payloadKg || 0));
+    const massAuthority = clamp(referenceMass / Math.max(.01, configuredMass), .48, 1.18);
+    const aerodynamicAuthority = clamp(densityRatio / gravityRatio * massAuthority, .04, 1.25);
     const ambientWind = clamp(Number(this.environment.wind || 0) / 35, 0, 1);
     const bias = gnss * Math.min(16, Math.max(0, this.state.t - 2) * 1.4);
     this.state.observedX = this.state.x + bias;
@@ -400,7 +404,9 @@ export class VidyutEngine {
   updateCommon(dt) {
     const power = Math.max(this.severity("battery_sag"), this.severity('power_brownout'), this.severity('temperature_extreme') * .5);
     const environmentLoad = Math.abs(Number(this.environment.temperature) - 20) / 100 + Number(this.environment.wind || 0) / 250;
-    const drain = (0.18 + Math.hypot(this.state.vx, this.state.vy) * 0.025 + power * 1.25 + environmentLoad) * dt;
+    const referenceMass = Number(this.profile.manifest?.physical?.totalMassKg || this.manifest?.physical?.totalMassKg || 1);
+    const payloadLoad = Math.max(0, Number(this.variant.payloadKg || 0)) / Math.max(.1, referenceMass);
+    const drain = (0.18 + Math.hypot(this.state.vx, this.state.vy) * 0.025 + power * 1.25 + environmentLoad + payloadLoad * .38) * dt;
     this.state.battery = clamp(this.state.battery - drain, 0, 100);
     const truth = this.vectorToTarget(false);
     const estimateError = Math.hypot(this.state.observedX - this.state.x, this.state.observedY - this.state.y);
@@ -525,6 +531,7 @@ export class VidyutEngine {
       adapter: this.adapter,
       simulator: this.simulator,
       environment: this.environment,
+      coverageVariant: this.variant,
       scenarioFingerprint: fingerprint(this.scenario),
       machineManifestFingerprint: this.manifest ? manifestFingerprint(this.manifest) : null,
       readiness: this.readiness,
@@ -547,7 +554,7 @@ export class VidyutEngine {
       eventLog: this.logs,
       telemetry: this.telemetry,
       explanations: [],
-      replay: { profileId: this.profile.id, manifest: this.manifest, scenario: this.scenario, environment: this.environment, seed: this.seed, mode: this.mode, simulator: this.simulator }
+      replay: { profileId: this.profile.id, manifest: this.manifest, scenario: this.scenario, environment: this.environment, seed: this.seed, mode: this.mode, simulator: this.simulator, variant: this.variant }
     };
   }
 

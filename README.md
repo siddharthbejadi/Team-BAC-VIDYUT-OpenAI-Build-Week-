@@ -1,5 +1,9 @@
 # BAC VIDYUT
 
+## One-hour live gripper proof
+
+Flash `samples/vidyut-gripper-g474re.cpp` to the NUCLEO-G474RE, connect the PCA9685 gripper servo on channel 0, then open VIDYUT in desktop Chrome or Edge. In **Run & evidence → Live gripper proof**, confirm the physical safety checklist and connect the controller at 115200 baud. Valid ±8° commands move the servo and update the virtual gripper only after an acknowledgement; the +30° safety command is rejected without motion.
+
 VIDYUT is a test workflow for autonomous machines. An engineering team imports a mechanical model, declares electronics and controller interfaces, passes pre-run readiness checks, configures environments and failures, then runs repeatable software-in-the-loop (SIL) or bench-safe hardware-in-the-loop (HIL) tests before physical trials.
 
 The hackathon demonstration focuses on a drone. Working reference profiles also show the same workflow for a rover, humanoid, and CubeSat.
@@ -113,6 +117,33 @@ Mission risk --> GPT-5.6 structured planner or local planner --> executable test
 ```
 
 The product's defensible role is the test-intent, adapter, readiness, reproducibility, and evidence layer. Established physics and controller ecosystems become execution backends rather than systems VIDYUT should pretend to replace.
+
+## 3D proving ground, coverage, and backend rollout
+
+The run page now uses a real WebGL 3D scene with lit terrain, shadows, articulated machine geometry, chase/orbit/side/top cameras, aerial altitude and vertical-speed instruments, and an explicit surface constraint for rovers and legged machines. Uploaded self-contained `.gltf` or `.glb` geometry can replace the reference machine mesh; STEP remains an engineering-data import until a production CAD tessellation service is connected.
+
+**Coverage sweep** executes 24 deterministic combinations across wind, payload, initial battery, and fault timing. The JSON result uses `vidyut.coverage.v1` and retains seeds, fingerprints, metrics, and individual test results for every run.
+
+**Export backend package** produces `vidyut.backend-package.v1`. It preserves the machine, environment, scenario, seed, evidence requirements, an FMI 3.0 co-simulation variable contract, and an ASAM OpenSCENARIO concept mapping. These mappings are adapter contracts rather than an FMU or conformance-certified `.osc` file.
+
+The backend selector exposes the honest runtime boundary:
+
+- **VIDYUT deterministic preview** is executable immediately.
+- **PX4 SITL + Gazebo** is enabled only after a configured bridge reports a calibrated VIDYUT execution stream. See [`adapters/px4-gazebo/README.md`](adapters/px4-gazebo/README.md).
+- **FMI 3.0** remains unavailable until an external FMI runner is configured through `FMI_BRIDGE_URL`.
+
+On this development computer WSL 2 and the Docker CLI are present, but Gazebo is not installed, Docker Desktop is not running, and a verified Pixhawk was not identified. Those external dependencies therefore remain deliberately unavailable in the UI instead of falling back to a fake result.
+
+### Fast test path
+
+1. Run `npm install`, then `npm start`.
+2. Open `http://127.0.0.1:4173/?demo=1` for the automatic drone/Himalayan judge path.
+3. Switch the camera to **Side profile** to see altitude changes, then select the rover preset to verify **SURFACE ONLY** motion.
+4. Import `samples/invalid-voltage-machine.json` and confirm readiness blocks execution.
+5. Restore the drone preset, run the scenario, open **Evidence**, and export JSON/CSV/HTML.
+6. Click **Run coverage sweep** to execute the 24-case matrix and export coverage JSON.
+7. Click **Export backend package** to inspect the PX4/FMI/OpenSCENARIO integration contract.
+8. Run `npm test`; the current suite contains 18 passing tests.
 
 ## API routes
 

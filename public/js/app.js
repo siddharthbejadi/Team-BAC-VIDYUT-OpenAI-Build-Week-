@@ -4,12 +4,17 @@ import { MACHINE_PROFILES, PRESET_SCENARIOS, cloneScenario, profileFromManifest 
 import { createStarterManifest, importMachineFiles, normalizeMachineManifest, validateMachineManifest } from './manifest.js';
 import { VidyutEngine } from './engine.js';
 import { HilBridge } from './hil.js';
+import { ProvingGround3D } from './three-scene.js';
+import { runCoverageSweep } from './coverage.js';
+import { BACKENDS, backendStatus, buildBackendPackage } from './adapters.js';
+import { GripperBridge } from './gripper.js';
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const hil = new HilBridge();
+const gripper = new GripperBridge();
 
 const state = {
   page: 'machine',
@@ -24,6 +29,8 @@ const state = {
   testFilter: 'All',
   testSearch: '',
   mode: 'SIL',
+  backendId: 'vidyut',
+  backendStatuses: null,
   engine: null,
   running: false,
   speed: 1.75,
@@ -33,7 +40,8 @@ const state = {
   aiConfigured: false,
   importNotices: [],
   evidence: null,
-  guided: false
+  guided: false,
+  coverage: null
 };
 
 const dom = {
@@ -41,10 +49,16 @@ const dom = {
   physicsConfirmed: $('#physics-confirmed'), componentRows: $('#component-rows'), connectionRows: $('#connection-rows'), geometrySummary: $('#geometry-summary'), readinessTitle: $('#readiness-title'), readinessRing: $('#readiness-ring'), readinessScore: $('#readiness-score'), readinessCounts: $('#readiness-counts'), readinessIssues: $('#readiness-issues'),
   environmentGrid: $('#environment-grid'), environmentEditor: $('#environment-editor'), testFilters: $('#test-filters'), testSearch: $('#test-search'), testLibrary: $('#test-library'), customTestEditor: $('#custom-test-editor'), customTestName: $('#custom-test-name'), customTestFault: $('#custom-test-fault'), customTestSeverity: $('#custom-test-severity'), customTestDuration: $('#custom-test-duration'), customTestAssertion: $('#custom-test-assertion'), planTitle: $('#plan-title'), planDuration: $('#plan-duration'), planEnvironment: $('#plan-environment'), planEvents: $('#plan-events'), seedInput: $('#seed-input'), speedSelect: $('#speed-select'),
   aiPrompt: $('#ai-prompt'), aiMode: $('#ai-mode'), aiHelper: $('#ai-helper'), generateBtn: $('#generate-btn'),
-  runMachineCard: $('#run-machine-card'), runEnvironmentCard: $('#run-environment-card'), connectorTitle: $('#connector-title'), connectorDetail: $('#connector-detail'), connectBtn: $('#connect-btn'), hilSafetyConfirm: $('#hil-safety-confirm'), controllerIo: $('#controller-io'), runBtn: $('#run-btn'), resetBtn: $('#reset-btn'),
-  sceneCanvas: $('#scene-canvas'), telemetryCanvas: $('#telemetry-canvas'), sceneMachineName: $('#scene-machine-name'), sceneObjective: $('#scene-objective'), runStateDot: $('#run-state-dot'), runStateLabel: $('#run-state-label'), runClock: $('#run-clock'), truthPosition: $('#truth-position'), controllerState: $('#controller-state'), faultBanner: $('#fault-banner'), faultBannerText: $('#fault-banner-text'), metricSafety: $('#metric-safety'), metricError: $('#metric-error'), metricContextLabel: $('#metric-context-label'), metricContext: $('#metric-context'), metricContextNote: $('#metric-context-note'), metricBattery: $('#metric-battery'), meterSafety: $('#meter-safety'), meterError: $('#meter-error'), meterContext: $('#meter-context'), meterBattery: $('#meter-battery'), metricSafetyNote: $('#metric-safety-note'), eventList: $('#event-list'), runtimeTrace: $('#runtime-trace'),
-  evidenceBtn: $('#evidence-btn'), guidedDemoBtn: $('#guided-demo-btn'), guidedRunBtn: $('#guided-run-btn'), reportDialog: $('#report-dialog'), reportContent: $('#report-content'), toast: $('#toast'), replayInput: $('#replay-input')
+  runMachineCard: $('#run-machine-card'), runEnvironmentCard: $('#run-environment-card'), backendSelect: $('#backend-select'), backendStatus: $('#backend-status'), connectorTitle: $('#connector-title'), connectorDetail: $('#connector-detail'), connectBtn: $('#connect-btn'), hilSafetyConfirm: $('#hil-safety-confirm'), controllerIo: $('#controller-io'), runBtn: $('#run-btn'), resetBtn: $('#reset-btn'),
+  sceneCanvas: $('#scene-canvas'), telemetryCanvas: $('#telemetry-canvas'), cameraMode: $('#camera-mode'), sceneAltitude: $('#scene-altitude'), sceneVerticalSpeed: $('#scene-vertical-speed'), sceneMotionConstraint: $('#scene-motion-constraint'), sceneMachineName: $('#scene-machine-name'), sceneObjective: $('#scene-objective'), runStateDot: $('#run-state-dot'), runStateLabel: $('#run-state-label'), runClock: $('#run-clock'), truthPosition: $('#truth-position'), controllerState: $('#controller-state'), faultBanner: $('#fault-banner'), faultBannerText: $('#fault-banner-text'), metricSafety: $('#metric-safety'), metricError: $('#metric-error'), metricContextLabel: $('#metric-context-label'), metricContext: $('#metric-context'), metricContextNote: $('#metric-context-note'), metricBattery: $('#metric-battery'), meterSafety: $('#meter-safety'), meterError: $('#meter-error'), meterContext: $('#meter-context'), meterBattery: $('#meter-battery'), metricSafetyNote: $('#metric-safety-note'), eventList: $('#event-list'), runtimeTrace: $('#runtime-trace'),
+  evidenceBtn: $('#evidence-btn'), guidedDemoBtn: $('#guided-demo-btn'), guidedRunBtn: $('#guided-run-btn'), reportDialog: $('#report-dialog'), reportContent: $('#report-content'), batchDialog: $('#batch-dialog'), batchContent: $('#batch-content'), toast: $('#toast'), replayInput: $('#replay-input')
 };
+
+Object.assign(dom, {
+  gripperTwin: $('#gripper-twin'), gripperAngle: $('#gripper-angle'), gripperStatus: $('#gripper-status'), gripperConnectBtn: $('#gripper-connect-btn'), gripperSafetyConfirm: $('#gripper-safety-confirm'), gripperUnsafeBtn: $('#gripper-unsafe-btn'), gripperStopBtn: $('#gripper-stop-btn'), gripperLog: $('#gripper-log')
+});
+
+const provingGround = new ProvingGround3D(dom.sceneCanvas);
 
 function profile() { return state.profiles[state.profileId]; }
 
@@ -99,6 +113,7 @@ function selectPreset(id) {
   state.customTests = [];
   state.selectedTestIds = clone(state.scenario.selectedTestIds || []);
   state.environment = clone(ENVIRONMENTS.find((item) => item.id === state.scenario.environmentId) || ENVIRONMENTS[0]);
+  provingGround.useProceduralMachine(state.manifest.family);
   syncProfile();
   renderMachine();
   renderScenario();
@@ -109,6 +124,7 @@ function selectPreset(id) {
 function newMachine() {
   state.manifest = createStarterManifest({ id: `custom-${Date.now().toString().slice(-6)}`, name: 'New custom machine', family: 'aerial', geometry: { format: 'unassigned', fileName: null, links: [], joints: [], confirmed: false }, physical: { totalMassKg: null, confirmed: false }, components: [], connections: [], capabilities: [], faults: [] });
   state.customTests = [];
+  provingGround.useProceduralMachine('aerial');
   syncProfile();
   state.selectedTestIds = ['gnss-loss', 'command-link-loss'];
   rebuildScenario();
@@ -178,6 +194,13 @@ async function handleMachineFiles(files) {
   state.manifest = result.manifest;
   state.importNotices = result.notices;
   syncProfile();
+  try {
+    const geometry = await provingGround.loadUploadedGeometry(files, state.manifest.family);
+    if (geometry.loaded) state.importNotices.unshift({ severity: 'info', message: `${geometry.name} loaded into the live 3D proving ground.` });
+  } catch (error) {
+    state.importNotices.unshift({ severity: 'warning', message: `3D preview could not load the selected glTF/GLB: ${error.message}` });
+    provingGround.useProceduralMachine(state.manifest.family);
+  }
   renderMachine();
   renderScenario();
   dom.runtimeHealth.textContent = 'Runtime healthy';
@@ -419,7 +442,10 @@ function resetEngine() {
   state.speed = Number(dom.speedSelect.value) || 1.75;
   state.scenario.environmentId = state.environment.id;
   state.scenario.selectedTestIds = clone(state.selectedTestIds);
-  state.engine = new VidyutEngine(profile(), state.scenario, { seed, mode: state.mode, environment: state.environment, manifest: state.manifest, readiness: state.validation, adapter: state.mode === 'HIL' ? (hil.synthetic ? 'synthetic-web-serial' : 'web-serial') : 'deterministic-sil' });
+  const selectedBackend = BACKENDS[state.backendId] || BACKENDS.vidyut;
+  const adapter = state.mode === 'HIL' ? (hil.synthetic ? 'synthetic-web-serial' : 'web-serial') : selectedBackend.adapter;
+  state.engine = new VidyutEngine(profile(), state.scenario, { seed, mode: state.mode, environment: state.environment, manifest: state.manifest, readiness: state.validation, adapter });
+  if (state.backendId !== 'vidyut') state.engine.simulator = { id: selectedBackend.id, version: 'external-runtime-required', timeStepPolicy: 'adapter-defined', fidelity: selectedBackend.fidelity };
   state.evidence = null;
   dom.runBtn.textContent = 'Run test plan';
   updateUI(state.engine.snapshot());
@@ -439,6 +465,10 @@ function renderRunConfiguration() {
 
 function toggleRun() {
   if (state.engine.state.completed) resetEngine();
+  if (state.mode === 'SIL' && state.backendId !== 'vidyut' && !state.backendStatuses?.[state.backendId]?.available) {
+    toast(`${BACKENDS[state.backendId].name} is not connected. Start its bridge or choose the VIDYUT preview.`);
+    return;
+  }
   if (!state.running && state.mode === 'HIL') {
     if (!hil.connected) { toast('Connect the HIL controller before starting the run.'); return; }
     if (hil.available && !dom.hilSafetyConfirm.checked) { toast('Confirm the bench-safety checklist before using real hardware.'); return; }
@@ -447,6 +477,25 @@ function toggleRun() {
   state.running = !state.running;
   dom.runBtn.textContent = state.running ? 'Pause run' : 'Resume run';
   state.lastFrame = performance.now();
+}
+
+function renderBackendStatus() {
+  const status = state.backendStatuses?.[state.backendId] || { available: state.backendId === 'vidyut', detail: state.backendId === 'vidyut' ? 'Browser deterministic preview ready.' : 'Checking external bridge...' };
+  const backend = BACKENDS[state.backendId] || BACKENDS.vidyut;
+  dom.backendStatus.classList.toggle('unavailable', !status.available);
+  dom.backendStatus.innerHTML = `<i></i><div><b>${escapeHtml(status.available ? `${backend.name} ready` : `${backend.name} unavailable`)}</b><small>${escapeHtml(status.detail)}</small></div>`;
+}
+
+async function refreshBackendStatus() {
+  state.backendStatuses = await backendStatus();
+  renderBackendStatus();
+}
+
+function selectBackend(id) {
+  state.backendId = BACKENDS[id] ? id : 'vidyut';
+  dom.backendSelect.value = state.backendId;
+  renderBackendStatus();
+  resetEngine();
 }
 
 function setMode(mode) {
@@ -552,23 +601,12 @@ function resizeCanvas(canvas) {
 }
 
 function drawScene(snapshot) {
-  const { context: ctx, width, height } = resizeCanvas(dom.sceneCanvas);
-  ctx.clearRect(0, 0, width, height);
-  const map = { left: 26, top: 22, width: width - 52, height: height - 44 };
-  const px = (x) => map.left + x / 100 * map.width;
-  const py = (y) => map.top + y / 100 * map.height;
-  const gradient = ctx.createLinearGradient(0, 0, 0, height);
-  gradient.addColorStop(0, '#102b38'); gradient.addColorStop(1, '#07141c'); ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = 'rgba(126,166,176,.08)'; ctx.lineWidth = 1;
-  for (let x = map.left; x < width; x += 32) { ctx.beginPath(); ctx.moveTo(x, map.top); ctx.lineTo(x, height - map.top); ctx.stroke(); }
-  for (let y = map.top; y < height; y += 32) { ctx.beginPath(); ctx.moveTo(map.left, y); ctx.lineTo(width - map.left, y); ctx.stroke(); }
-  drawEnvironment(ctx, map, px, py);
-  ctx.save(); ctx.setLineDash([5,5]); ctx.strokeStyle = 'rgba(96,165,250,.55)'; ctx.beginPath(); ctx.moveTo(px(profile().initial.x), py(profile().initial.y)); ctx.lineTo(px(profile().target.x), py(profile().target.y)); ctx.stroke(); ctx.restore();
-  ctx.strokeStyle = state.environment.color; ctx.beginPath(); ctx.arc(px(profile().target.x), py(profile().target.y), 11, 0, Math.PI * 2); ctx.stroke();
-  if (snapshot.telemetry.length > 1) { ctx.strokeStyle = profile().accent; ctx.globalAlpha = .45; ctx.lineWidth = 2; ctx.beginPath(); snapshot.telemetry.forEach((point, index) => index ? ctx.lineTo(px(point.x), py(point.y)) : ctx.moveTo(px(point.x), py(point.y))); ctx.stroke(); ctx.globalAlpha = 1; }
-  const gap = Math.hypot(snapshot.observedX - snapshot.x, snapshot.observedY - snapshot.y);
-  if (gap > .15) { ctx.save(); ctx.setLineDash([4,4]); ctx.strokeStyle = '#f7b955'; ctx.beginPath(); ctx.moveTo(px(snapshot.x), py(snapshot.y)); ctx.lineTo(px(snapshot.observedX), py(snapshot.observedY)); ctx.stroke(); ctx.beginPath(); ctx.arc(px(snapshot.observedX), py(snapshot.observedY), 7, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
-  drawMachine(ctx, px(snapshot.x), py(snapshot.y), snapshot);
+  const family = state.manifest.family;
+  const view = provingGround.update(snapshot, { environment: state.environment, profile: profile(), family });
+  dom.truthPosition.textContent = `X ${snapshot.x.toFixed(1)} / Y ${snapshot.y.toFixed(1)} / Z ${snapshot.altitude.toFixed(1)} m`;
+  dom.sceneAltitude.textContent = family === 'aerial' ? `${view.agl.toFixed(1)} m` : family === 'spacecraft' ? `${snapshot.altitude.toFixed(1)} km` : '0.0 m';
+  dom.sceneVerticalSpeed.textContent = family === 'aerial' ? `${view.verticalSpeed >= 0 ? '+' : ''}${view.verticalSpeed.toFixed(1)} m/s` : 'SURFACE LOCK';
+  dom.sceneMotionConstraint.textContent = family === 'aerial' ? '3D FLIGHT' : family === 'spacecraft' ? 'ORBITAL 3D' : family === 'legged' ? 'TERRAIN CONTACT' : 'SURFACE ONLY';
 }
 
 function drawEnvironment(ctx, map, px, py) {
@@ -604,6 +642,32 @@ function drawTelemetry(data) {
   const maxT = Math.max(state.scenario.duration, data.at(-1).t); const x = (t) => left + t/maxT*w;
   const plot = (color, fn) => { ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.beginPath(); data.forEach((point,index) => { const y = top + h - clamp(fn(point),0,100)/100*h; index ? ctx.lineTo(x(point.t),y) : ctx.moveTo(x(point.t),y); }); ctx.stroke(); };
   plot('#5eead4', (point) => point.stability); plot('#60a5fa', (point) => point.battery); plot('#f7b955', (point) => point.targetDistance * 2);
+}
+
+function runBatchCoverage() {
+  if (!state.validation?.ready) { toast('Resolve machine-readiness blockers before running coverage.'); return; }
+  const button = $('#batch-run-btn');
+  button.disabled = true; button.textContent = 'Running 24 cases...';
+  try {
+    state.coverage = runCoverageSweep({ profile: profile(), scenario: state.scenario, environment: state.environment, manifest: state.manifest, readiness: state.validation, baseSeed: Number(dom.seedInput.value) || 42 });
+    const summary = state.coverage.summary;
+    const rows = [...state.coverage.runs].sort((a, b) => a.metrics.minimumSafetyMargin - b.metrics.minimumSafetyMargin).map((run) => `<tr><td class="${run.status === 'PASS' ? 'coverage-pass' : 'coverage-fail'}">${run.status}</td><td>${run.seed}</td><td>${run.variant.windMps}</td><td>${run.variant.payloadKg}</td><td>${run.variant.initialBatteryPercent}%</td><td>${run.variant.failureTimingOffsetSeconds > 0 ? '+' : ''}${run.variant.failureTimingOffsetSeconds}s</td><td>${run.metrics.minimumSafetyMargin}%</td><td>${run.metrics.peakEstimateError} m</td><td>${run.failedTests}</td></tr>`).join('');
+    dom.batchContent.innerHTML = `<section class="coverage-summary"><article><span>RUNS</span><b>${summary.total}</b></article><article><span>PASS RATE</span><b>${summary.passRatePercent}%</b></article><article><span>WORST SAFETY</span><b>${summary.worstSafetyPercent}%</b></article><article><span>PEAK ERROR</span><b>${summary.worstEstimateErrorM} m</b></article></section><p class="helper">Wind, payload, initial battery, and fault timing were swept deterministically. Rows are ordered from the lowest safety margin.</p><div class="table-wrap"><table><thead><tr><th>Status</th><th>Seed</th><th>Wind m/s</th><th>Payload kg</th><th>Battery</th><th>Fault shift</th><th>Min safety</th><th>Peak error</th><th>Failed tests</th></tr></thead><tbody>${rows}</tbody></table></div><p class="helper">${escapeHtml(state.coverage.note)}</p>`;
+    dom.batchDialog.showModal();
+  } finally {
+    button.disabled = false; button.textContent = 'Run coverage sweep';
+  }
+}
+
+function downloadCoverage() {
+  if (!state.coverage) { runBatchCoverage(); return; }
+  download(`vidyut-${state.profileId}-coverage.json`, JSON.stringify(state.coverage, null, 2), 'application/json');
+}
+
+function exportBackendPackage() {
+  const packageData = buildBackendPackage({ backendId: state.backendId, manifest: state.manifest, scenario: state.scenario, environment: state.environment, seed: Number(dom.seedInput.value) || 42 });
+  download(`${state.manifest.id}-${state.backendId}-backend.json`, JSON.stringify(packageData, null, 2), 'application/json');
+  toast('Backend package exported with FMI and OpenSCENARIO mapping contracts.');
 }
 
 function openEvidence() {
@@ -660,6 +724,7 @@ async function loadReplay(file) {
 
 function startGuidedDemo() {
   selectPreset('drone');
+  selectBackend('vidyut');
   setMode('SIL');
   dom.seedInput.value = 42; dom.speedSelect.value = 3; state.speed = 3; state.guided = true;
   goPage('run'); state.running = true; state.lastFrame = performance.now(); dom.runBtn.textContent = 'Pause run';
@@ -732,12 +797,48 @@ function bindEvents() {
   dom.planEvents.addEventListener('input', (event) => { const input = event.target.closest('[data-event-severity]'); if (!input) return; state.scenario.events[Number(input.dataset.eventSeverity)].severity = Number(input.value) / 100; renderPlan(); });
   dom.generateBtn.addEventListener('click', generateScenario);
   dom.seedInput.addEventListener('change', resetEngine); dom.speedSelect.addEventListener('change', () => state.speed = Number(dom.speedSelect.value));
+  dom.backendSelect.addEventListener('change', () => selectBackend(dom.backendSelect.value));
+  dom.cameraMode.addEventListener('change', () => provingGround.setCameraMode(dom.cameraMode.value));
+  dom.sceneCanvas.addEventListener('camera-mode-change', (event) => { dom.cameraMode.value = event.detail.mode; });
   $$('.segmented button').forEach((button) => button.addEventListener('click', () => setMode(button.dataset.mode)));
   dom.hilSafetyConfirm.addEventListener('change', () => { state.manifest.safety.benchChecklistConfirmed = dom.hilSafetyConfirm.checked; });
   dom.connectBtn.addEventListener('click', connectController); $('#estop-btn').addEventListener('click', () => hil.emergencyStop()); $('#clear-estop-btn').addEventListener('click', () => hil.clearEmergencyStop());
   dom.runBtn.addEventListener('click', toggleRun); dom.resetBtn.addEventListener('click', resetEngine);
+  $('#batch-run-btn').addEventListener('click', runBatchCoverage); $('#export-adapter-btn').addEventListener('click', exportBackendPackage);
+  $('#close-batch').addEventListener('click', () => dom.batchDialog.close()); $('#download-batch').addEventListener('click', downloadCoverage); $('#rerun-batch').addEventListener('click', () => { dom.batchDialog.close(); runBatchCoverage(); });
   dom.evidenceBtn.addEventListener('click', openEvidence); $('#close-report').addEventListener('click', () => dom.reportDialog.close()); $('#download-report').addEventListener('click', downloadReport); $('#download-html').addEventListener('click', downloadHtmlReport); $('#download-csv').addEventListener('click', downloadCsv); dom.replayInput.addEventListener('change', () => loadReplay(dom.replayInput.files[0]));
   dom.guidedDemoBtn.addEventListener('click', startGuidedDemo); dom.guidedRunBtn.addEventListener('click', startGuidedDemo);
+  dom.gripperConnectBtn.addEventListener('click', async () => {
+    try {
+      if (gripper.connected) { await gripper.disconnect(); dom.gripperConnectBtn.textContent = 'Connect'; return; }
+      if (!dom.gripperSafetyConfirm.checked) throw new Error('Complete the live-gripper safety confirmation first.');
+      await gripper.connect(); dom.gripperConnectBtn.textContent = 'Disconnect';
+    } catch (error) { if (error.name !== 'NotFoundError') toast(error.message); }
+  });
+  $$('[data-gripper-move]').forEach((button) => button.addEventListener('click', async () => {
+    try {
+      if (!dom.gripperSafetyConfirm.checked) throw new Error('Complete the safety confirmation first.');
+      const offset = Number(button.dataset.gripperMove);
+      if (offset === 0) await gripper.center(); else await gripper.move(offset);
+    } catch (error) { toast(error.message); }
+  }));
+  dom.gripperUnsafeBtn.addEventListener('click', () => gripper.move(30).catch((error) => toast(error.message)));
+  dom.gripperStopBtn.addEventListener('click', () => gripper.stop().catch((error) => toast(error.message)));
+  const appendGripperLog = (direction, line) => {
+    const entry = `${new Date().toLocaleTimeString()}  ${direction} ${line}`;
+    dom.gripperLog.textContent = `${entry}\n${dom.gripperLog.textContent}`.split('\n').slice(0, 8).join('\n');
+  };
+  gripper.addEventListener('tx', (event) => appendGripperLog('→', event.detail));
+  gripper.addEventListener('rx', (event) => appendGripperLog('←', event.detail));
+  gripper.addEventListener('status', (event) => { dom.gripperStatus.textContent = event.detail; toast(event.detail); });
+  gripper.addEventListener('ack', (event) => {
+    const offset = event.detail.offset;
+    dom.gripperTwin.style.setProperty('--grip', `${offset * 2.2}deg`);
+    dom.gripperAngle.textContent = `${offset.toFixed(1)}° ACKNOWLEDGED`;
+    dom.gripperStatus.textContent = `Command ${event.detail.sequence} physically issued`;
+  });
+  gripper.addEventListener('rejected', (event) => { dom.gripperStatus.textContent = 'Unsafe command rejected — no motion'; toast('Safety proof passed: +30° was rejected by firmware.'); appendGripperLog('✓', 'NO MOTION / RANGE GUARD PASSED'); });
+  gripper.addEventListener('error', (event) => toast(event.detail));
   hil.addEventListener('telemetry', (event) => { state.hardwareSample = event.detail; dom.controllerIo.textContent = JSON.stringify(event.detail, null, 2); });
   hil.addEventListener('actuators', (event) => { state.actuatorCommand = event.detail; dom.controllerIo.textContent = JSON.stringify(event.detail, null, 2); });
   hil.addEventListener('status', (event) => {
@@ -754,8 +855,9 @@ function bindEvents() {
 function init() {
   state.validation = validateMachineManifest(state.manifest);
   bindEvents();
-  renderMachine(); renderScenario(); resetEngine(); renderRunConfiguration(); checkAiStatus();
+  renderMachine(); renderScenario(); resetEngine(); renderRunConfiguration(); checkAiStatus(); refreshBackendStatus();
   requestAnimationFrame(animationLoop);
+  if (new URLSearchParams(window.location.search).get('demo') === '1') setTimeout(startGuidedDemo, 120);
 }
 
 init();
