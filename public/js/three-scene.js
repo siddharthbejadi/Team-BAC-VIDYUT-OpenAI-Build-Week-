@@ -342,7 +342,10 @@ export class ProvingGround3D {
     this.machine.position.x = lerp(this.machine.position.x, x, smoothing);
     this.machine.position.y = lerp(this.machine.position.y, y, smoothing);
     this.machine.position.z = lerp(this.machine.position.z, z, smoothing);
-    this.machine.rotation.y = -snapshot.heading * Math.PI / 180 + Math.PI;
+    const headingRadians = snapshot.heading * Math.PI / 180;
+    // Procedural humanoid is authored facing +Z. Route heading zero means +X,
+    // so it needs a +90 degree basis offset rather than the generic 180 degree offset.
+    this.machine.rotation.y = family === 'legged' ? Math.PI / 2 - headingRadians : -headingRadians + Math.PI;
     if (family === 'aerial') {
       this.machine.rotation.z = snapshot.attitude * Math.PI / 180 * .38;
       this.rotors.forEach((rotor) => { rotor.rotation.y += .72 * rotor.userData.spinDirection; });
@@ -351,7 +354,9 @@ export class ProvingGround3D {
       const distance = Math.hypot(x - this.previous.worldX, z - this.previous.worldZ);
       this.wheels.forEach((wheel) => { wheel.rotation.z -= distance * .8; });
     } else if (family === 'legged') {
-      const gait = Math.sin(snapshot.t * 5.2) * .55 * clamp(Math.hypot(snapshot.vx, snapshot.vy), 0, 1);
+      const speed = Math.hypot(snapshot.vx, snapshot.vy);
+      const gaitStrength = speed < .08 ? 0 : clamp(speed / 1.8, 0, 1);
+      const gait = Math.sin(snapshot.t * 4.4) * .38 * gaitStrength;
       this.limbs.forEach((entry) => {
         if (entry.hip) { entry.hip.rotation.x = gait * entry.hip.userData.side; entry.knee.rotation.x = Math.max(0, -gait * entry.hip.userData.side) * .75; }
         if (entry.shoulder) entry.shoulder.rotation.x = -gait * entry.shoulder.userData.side;

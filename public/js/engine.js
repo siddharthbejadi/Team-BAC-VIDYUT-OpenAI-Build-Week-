@@ -318,7 +318,11 @@ export class VidyutEngine {
     this.state.x += this.state.vx * dt;
     this.state.y += this.state.vy * dt;
     this.state.attitude = clamp((100 - this.state.stability) * 0.32, 0, 35);
-    this.state.heading = Math.sin(this.state.t * 5) * (4 + joint * 9);
+    // Face the actual direction of travel. The previous decorative sine-wave
+    // heading made the humanoid slide along the route while looking sideways.
+    if (Math.hypot(this.state.vx, this.state.vy) > 0.04) {
+      this.state.heading = Math.atan2(this.state.vy, this.state.vx) * 180 / Math.PI;
+    }
     this.state.observedX = this.state.x + imu * 2.5;
     this.state.observedY = this.state.y;
   }
