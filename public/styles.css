@@ -263,7 +263,7 @@ td .remove-row { min-height: 29px; width: 29px; padding: 0; color: var(--red); }
 .runtime-trace { max-height: 270px; overflow: auto; }
 .trace-entry { display: grid; grid-template-columns: 38px 1fr; gap: 7px; font-size: 8px; padding: 6px 0; border-bottom: 1px solid rgba(28,52,65,.45); }.trace-entry time { color: var(--dim); font-family: ui-monospace, monospace; }.trace-entry.fault span { color: var(--red); }.trace-entry.success span { color: var(--green); }.trace-entry.action span { color: var(--blue); }
 .controller-io { color: var(--muted); font: 8px/1.5 ui-monospace, monospace; white-space: pre-wrap; word-break: break-word; }
-.gripper-demo { border: 1px solid rgba(94,234,212,.3); margin: 10px -7px; padding: 14px 7px 18px !important; background: rgba(94,234,212,.025); }
+.gripper-demo { border-color: rgba(94,234,212,.3); margin-bottom: 15px; background: rgba(94,234,212,.025); }
 .gripper-twin { height: 125px; position: relative; overflow: hidden; border: 1px solid var(--line); background: radial-gradient(circle at 50% 35%, rgba(94,234,212,.12), transparent 45%), #061119; }
 .gripper-palm { position: absolute; width: 58px; height: 49px; left: calc(50% - 29px); top: 20px; border: 2px solid var(--teal); border-radius: 8px 8px 20px 20px; background: rgba(94,234,212,.08); }
 .jaw { position: absolute; top: 57px; width: 12px; height: 43px; border: 2px solid var(--teal); background: #0b2028; transform-origin: top center; transition: transform .35s ease; }
