@@ -71,7 +71,8 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .home-copy { padding: clamp(55px, 7vw, 110px) clamp(38px, 6vw, 104px); display: flex; flex-direction: column; justify-content: center; position: relative; z-index: 2; background: radial-gradient(circle at 15% 20%, rgba(27,118,130,.15), transparent 38%), #061117; }
 .home-kicker { display: flex; align-items: center; gap: 13px; color: var(--teal); font: 9px ui-monospace, monospace; letter-spacing: .18em; }
 .home-kicker i { width: 44px; border-top: 1px solid rgba(94,234,212,.5); }.home-kicker b { color: var(--muted); font-weight: 500; }
-.home-copy h1 { max-width: 790px; margin: 34px 0 26px; font-size: clamp(54px, 6vw, 104px); line-height: .94; letter-spacing: -.068em; font-weight: 570; }
+.home-origin { max-width:700px; margin:30px 0 0; padding-left:18px; border-left:2px solid var(--teal); color:#9db1ba; font-size:clamp(14px,1.05vw,17px); line-height:1.55; }.home-origin b { color:var(--text); font-weight:700; }
+.home-copy h1 { max-width: 790px; margin: 25px 0 26px; font-size: clamp(54px, 6vw, 104px); line-height: .94; letter-spacing: -.068em; font-weight: 570; }
 .home-copy h1 em { color: var(--teal); font-style: normal; }
 .home-lede { max-width: 650px; color: #9db1ba; font-size: clamp(17px, 1.4vw, 23px); line-height: 1.5; margin: 0; }
 .home-actions { display: flex; align-items: center; gap: 22px; margin-top: 42px; }
