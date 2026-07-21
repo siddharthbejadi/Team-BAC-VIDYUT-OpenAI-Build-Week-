@@ -1,5 +1,20 @@
 # BAC VIDYUT
 
+## How we used Codex and GPT-5.6
+
+We used **GPT-5.6 through Codex as an engineering collaborator throughout the build**, rather than only using it to generate an initial prototype. Codex helped us:
+
+- turn the original product discussion into an implementable architecture, versioned schemas, and a three-stage user workflow;
+- research HIL and SIL architecture, autonomous-machine simulators, component data, FMI 3.0, and ASAM OpenSCENARIO concepts;
+- implement and refine the machine import pipeline, electrical-readiness validator, deterministic executor, Three.js proving ground, Web Serial bridge, evidence exports, coverage runner, and automated tests;
+- diagnose the physical controller setup involving the NUCLEO-G474RE, PCA9685, MG996R servos, I2C mappings, and separate logic and actuator power domains;
+- inspect test failures, review engineering claims, and keep unavailable external backends visibly unavailable instead of replacing them with fake results; and
+- prepare the runnable demo, documentation, deployment, and verification suite used for this submission.
+
+GPT-5.6 also has a constrained role inside the product. Through the server-side OpenAI Responses API and Structured Outputs, it can translate engineering intent into a bounded scenario draft and research an unknown component from manufacturer information. AI-produced values retain their sources and remain unconfirmed until an engineer reviews them. If no API key is configured, VIDYUT uses a transparent deterministic fallback so judges can still run the complete demonstration.
+
+The responsibility boundary is deliberate: **GPT-5.6 helps interpret, research, and structure engineering intent; deterministic code executes the scenario, calculates telemetry, evaluates thresholds, and produces the evidence.** The language model is not presented as the physics engine or as a safety authority.
+
 ## One-hour live gripper proof
 
 Flash `samples/vidyut-gripper-g474re.cpp` to the NUCLEO-G474RE, connect the PCA9685 gripper servo on channel 0, then open VIDYUT in desktop Chrome or Edge. In **Machine setup**, select the **Humanoid working adapter** to reveal its embedded live hardware controls, confirm the safety checklist, and connect at 115200 baud. Valid ±8° commands move the servo and update the virtual gripper only after an acknowledgement; the +30° safety command is rejected without motion.
@@ -27,21 +42,6 @@ The hackathon demonstration focuses on a drone. Working reference profiles also 
 - Project-specific tests built from validated deterministic fault hooks, with a user-defined measurable assertion preserved in the evidence.
 - Optional GPT-5.6 structured scenario planning through the OpenAI Responses API, with a transparent deterministic fallback when no API key is configured.
 - A responsive UI and one-click judge demo.
-
-## How we used Codex and GPT-5.6
-
-We used **GPT-5.6 through Codex as an engineering collaborator throughout the build**, rather than only using it to generate an initial prototype. Codex helped us:
-
-- turn the original product discussion into an implementable architecture, versioned schemas, and a three-stage user workflow;
-- research HIL and SIL architecture, autonomous-machine simulators, component data, FMI 3.0, and ASAM OpenSCENARIO concepts;
-- implement and refine the machine import pipeline, electrical-readiness validator, deterministic executor, Three.js proving ground, Web Serial bridge, evidence exports, coverage runner, and automated tests;
-- diagnose the physical controller setup involving the NUCLEO-G474RE, PCA9685, MG996R servos, I2C mappings, and separate logic and actuator power domains;
-- inspect test failures, review engineering claims, and keep unavailable external backends visibly unavailable instead of replacing them with fake results; and
-- prepare the runnable demo, documentation, deployment, and verification suite used for this submission.
-
-GPT-5.6 also has a constrained role inside the product. Through the server-side OpenAI Responses API and Structured Outputs, it can translate engineering intent into a bounded scenario draft and research an unknown component from manufacturer information. AI-produced values retain their sources and remain unconfirmed until an engineer reviews them. If no API key is configured, VIDYUT uses a transparent deterministic fallback so judges can still run the complete demonstration.
-
-The responsibility boundary is deliberate: **GPT-5.6 helps interpret, research, and structure engineering intent; deterministic code executes the scenario, calculates telemetry, evaluates thresholds, and produces the evidence.** The language model is not presented as the physics engine or as a safety authority.
 
 ## Important engineering boundary
 
